@@ -1,0 +1,297 @@
+---
+title: "12_rgi_to_phyloseq"
+output: html_document
+date: "2025-07-15"
+---
+#rgi
+```{r dataframe metadata}
+library(tidyverse)
+library(phyloseq)
+rgi_data<- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/rgi_data_filtered.Rds")
+rgi_data$ARO_ID <- paste0(
+  "ARO_",
+  rgi_data$ARO,
+  "|ORF_ID_",
+  sub(" #.*", "", rgi_data$ORF_ID)
+)
+rgi_data<-rgi_data[,c("ARO_ID", "Best_Hit_ARO", "ARO", "Model_type", "Drug Class", "Resistance Mechanism", "AMR Gene Family", "ID", "Model_ID", "Nudged", "Note", "Hit_Start", "Hit_End", "Antibiotic")]
+rgi_data$Hit_End<-as.numeric(rgi_data$Hit_End)
+rgi_data$Hit_Start<-as.numeric(rgi_data$Hit_Start)
+
+```
+
+
+
+```{r counts matrix}
+library(tidyverse)
+library(purrr)
+
+#Spain
+# Set the directory where your idxstats files are
+idx_dir <- "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Assembly/bowtie_out"
+idx_files <- list.files(idx_dir, pattern = "\\.idxstats\\.txt$", full.names = TRUE)
+
+# Function to read each idxstats file and extract mapped counts
+read_idxstats <- function(file) {
+  # Sample name from the filename
+  sample <- file %>%
+    basename() %>%
+    stringr::str_remove("\\.idxstats\\.txt$")
+  
+  # Read and reformat the data
+  readr::read_tsv(file, 
+                  col_names = c("ARO_ID", "length", "mapped", "unmapped"),
+                  show_col_types = FALSE) %>%
+    dplyr::select(ARO_ID, length, mapped) %>%
+    dplyr::rename(!!sample := mapped)
+}
+
+# Load and merge all
+counts_list <- lapply(idx_files, read_idxstats)
+merged_counts <- purrr::reduce(counts_list, full_join, by = c("ARO_ID", "length"))
+merged_counts[is.na(merged_counts)] <- 0  # Replace NAs with 0
+
+cleaned_counts <- merged_counts %>%
+    mutate(ARO_ID = str_remove(ARO_ID, "\\|.*$")) %>%
+    group_by(ARO_ID) %>%
+    summarise(
+        length = max(length),  # keep the max length for exaple, we replace later by reference gene length
+        across(where(is.numeric) & !matches("length"), sum),  # sum other numeric columns
+        .groups = "drop"
+    )%>%
+    filter(ARO_ID != "*")
+
+#We keep the reference sequence length
+rgi_data_filtered <- rgi_data %>%
+  mutate(
+    ARO_ID = stringr::str_remove(ARO_ID, "\\|.*$"),
+    Hit_Start = as.numeric(Hit_Start),
+    Hit_End = as.numeric(Hit_End),
+    length = Hit_End - Hit_Start
+  ) %>%
+  distinct(ARO_ID, .keep_all = TRUE)  %>%
+  filter(ARO_ID %in% cleaned_counts$ARO_ID) %>%
+  distinct(ARO_ID, .keep_all = TRUE)
+
+cleaned_counts <- cleaned_counts %>%
+  select(-length) %>%  # Remove old length column to avoid conflict
+  left_join(
+    rgi_data_filtered %>% select(ARO_ID, length),
+    by = "ARO_ID"
+  )
+
+#FPKM transformation
+# Extract sample names (excluding ARO_ID and length)
+sample_cols <- setdiff(colnames(cleaned_counts), c("ARO_ID", "length"))
+
+# Compute total mapped reads per sample
+total_mapped_reads_Spain <- colSums(cleaned_counts[, sample_cols])
+
+# Create FPKM matrix
+fpkm_Spain <- cleaned_counts
+
+for (sample in sample_cols) {
+  fpkm_Spain[[sample]] <- (1e9 * cleaned_counts[[sample]]) / 
+                    (cleaned_counts$length * total_mapped_reads_Spain[[sample]])
+}
+
+# Round
+fpkm_Spain[, sample_cols] <- round(fpkm_Spain[, sample_cols], 2)
+fpkm_Spain<-as.data.frame(fpkm_Spain)
+rownames(fpkm_Spain) <- fpkm_Spain$ARO_ID
+
+
+#UK
+# Set the directory where your idxstats files are
+idx_dir_UK <- "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bibliography/Patel_2021_09_10/Assembly/bowtie_out"
+idx_files_UK <- list.files(idx_dir_UK, pattern = "\\.idxstats\\.txt$", full.names = TRUE)
+
+# Load and merge all
+counts_list_UK <- lapply(idx_files_UK, read_idxstats)
+merged_counts_UK <- purrr::reduce(counts_list_UK, full_join, by = c("ARO_ID", "length"))
+merged_counts_UK[is.na(merged_counts_UK)] <- 0  # Replace NAs with 0
+
+cleaned_counts_UK <- merged_counts_UK %>%
+    mutate(ARO_ID = str_remove(ARO_ID, "\\|.*$")) %>%
+    group_by(ARO_ID) %>%
+    summarise(
+        length = max(length),  # keep the max length for exaple, we replace later by reference gene length
+        across(where(is.numeric) & !matches("length"), sum),  # sum other numeric columns
+        .groups = "drop"
+    )%>%
+    filter(!ARO_ID %in% c("*", "ORF_ID_k141_1289_1"))
+
+#We keep the reference sequence length
+rgi_data_filtered_UK <- rgi_data %>%
+  mutate(
+    ARO_ID = stringr::str_remove(ARO_ID, "\\|.*$"),
+    Hit_Start = as.numeric(Hit_Start),
+    Hit_End = as.numeric(Hit_End),
+    length = Hit_End - Hit_Start
+  ) %>%
+  distinct(ARO_ID, .keep_all = TRUE)  %>%
+  filter(ARO_ID %in% cleaned_counts_UK$ARO_ID) %>%
+  distinct(ARO_ID, .keep_all = TRUE)
+
+cleaned_counts_UK <- cleaned_counts_UK %>%
+  select(-length) %>%  # Remove old length column to avoid conflict
+  left_join(
+    rgi_data_filtered_UK %>% select(ARO_ID, length),
+    by = "ARO_ID"
+  )
+
+# Extract sample names (excluding ARO_ID and length)
+sample_cols_UK <- setdiff(colnames(cleaned_counts_UK), c("ARO_ID", "length"))
+
+# Compute total mapped reads per sample
+total_mapped_reads_UK <- colSums(cleaned_counts_UK[, sample_cols_UK])
+
+# Create FPKM matrix
+fpkm_UK <- cleaned_counts_UK
+
+for (sample in sample_cols_UK) {
+  fpkm_UK[[sample]] <- (1e9 * cleaned_counts_UK[[sample]]) / 
+                    (cleaned_counts_UK$length * total_mapped_reads_UK[[sample]])
+}
+
+# Optional: round for readability
+fpkm_UK[, sample_cols_UK] <- round(fpkm_UK[, sample_cols_UK], 3)
+fpkm_UK<-as.data.frame(fpkm_UK)
+rownames(fpkm_UK)<- fpkm_UK$ARO_ID
+
+fpkm_all <- merge(fpkm_Spain, fpkm_UK, by = "ARO_ID", all = TRUE)
+fpkm_all[is.na(fpkm_all)] <- 0
+```
+
+#phyloseq object rgi
+```{r phyloseq}
+library(phyloseq)
+
+otu_data<-fpkm_all
+rownames(otu_data)<-otu_data$ARO_ID
+otu_data$ARO_ID<-NULL
+tax_data <- merge(rgi_data_filtered, rgi_data_filtered_UK, by = "ARO_ID", all = TRUE)
+
+# Duplicated columns are suffixed by .x and .y, we keep only .x OR .y for each shared column
+shared_cols <- setdiff(names(rgi_data_filtered), "ARO_ID") # columns besides ARO_ID
+for (col in shared_cols) {
+  data_col_x <- paste0(col, ".x")
+  data_col_y <- paste0(col, ".y")
+  if (data_col_x %in% names(tax_data) && data_col_y %in% names(tax_data)) {
+    # Prefer '.x', but fill NAs from '.y' where applicable
+    tax_data[[col]] <- ifelse(is.na(tax_data[[data_col_x]]),
+                             tax_data[[data_col_y]],
+                             tax_data[[data_col_x]])
+    tax_data[[data_col_x]] <- NULL
+    tax_data[[data_col_y]] <- NULL
+  }
+}
+
+rownames(tax_data)<-tax_data$ARO_ID
+
+GMMs_merged <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/GMMs_merged.Rds")
+metadata<-data.frame(sample_data(GMMs_merged))
+
+rm(GMMs_merged)
+
+OTU = otu_table(as.matrix(otu_data), taxa_are_rows = TRUE)
+TAX = tax_table(as.matrix(tax_data))
+SAMPLE <- sample_data(metadata)
+
+ # merge the data
+ARGs_rgi <- phyloseq(OTU, TAX, SAMPLE)
+
+saveRDS(ARGs_rgi, file = "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bibliography/Patel_analysis/outputs/ARGs_rgi.Rds")
+
+```
+
+
+
+#ResFinder
+```{r counts matrix}
+library(tidyverse)
+library(purrr)
+
+#Spain
+# Set the directory where your idxstats files are
+idx_dir <- "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Assembly/bowtie_out_Resfinder"
+idx_files <- list.files(idx_dir, pattern = "\\.idxstats\\.txt$", full.names = TRUE)
+
+# Function to read each idxstats file and extract mapped counts
+read_idxstats <- function(file) {
+  # Sample name from the filename
+  sample <- file %>%
+    basename() %>%
+    stringr::str_remove("\\.idxstats\\.txt$")
+  
+  # Read and reformat the data
+  readr::read_tsv(file, 
+                  col_names = c("ARO_ID", "length", "mapped", "unmapped"),
+                  show_col_types = FALSE) %>%
+    dplyr::select(ARO_ID, length, mapped) %>%
+    dplyr::rename(!!sample := mapped)
+}
+
+# Load and merge all
+counts_list <- lapply(idx_files, read_idxstats)
+merged_counts <- purrr::reduce(counts_list, full_join, by = c("ARO_ID", "length"))
+merged_counts[is.na(merged_counts)] <- 0  # Replace NAs with 0
+
+# Extract sample names (excluding ARO_ID and length)
+sample_cols <- colnames(merged_counts)[-(1:2)]
+
+# Compute total mapped reads per sample
+total_mapped_reads_Spain <- colSums(merged_counts[, sample_cols])
+
+# Create FPKM matrix
+fpkm_Spain <- merged_counts
+
+for (sample in sample_cols) {
+  fpkm_Spain[[sample]] <- (1e9 * merged_counts[[sample]]) / 
+                    (merged_counts$length * total_mapped_reads_Spain[[sample]])
+}
+
+# Optional: round for readability
+fpkm_Spain[, sample_cols] <- round(fpkm_Spain[, sample_cols], 3)
+# Extract the base ARO_ID without the "_1" suffix
+base_ids <- sub("_1$", "", fpkm_Spain$ARO_ID)
+# For each base ID, assign incremental suffix starting from 1
+fpkm_Spain$ARO_ID_unique <- with(fpkm_Spain,
+    paste0(base_ids, "_", ave(base_ids, base_ids, FUN = seq_along)))
+# Set rownames using the updated unique IDs
+rownames(fpkm_Spain) <- fpkm_Spain$ARO_ID_unique
+
+
+#UK
+# Set the directory where your idxstats files are
+idx_dir_UK <- "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bibliography/Patel_2021_09_10/Assembly/bowtie_out_Resfinder"
+idx_files_UK <- list.files(idx_dir_UK, pattern = "\\.idxstats\\.txt$", full.names = TRUE)
+
+# Load and merge all
+counts_list_UK <- lapply(idx_files_UK, read_idxstats)
+merged_counts_UK <- purrr::reduce(counts_list_UK, full_join, by = c("ARO_ID", "length"))
+merged_counts_UK[is.na(merged_counts_UK)] <- 0  # Replace NAs with 0
+
+# Extract sample names (excluding ARO_ID and length)
+sample_cols_UK <- colnames(merged_counts_UK)[-(1:2)]
+
+# Compute total mapped reads per sample
+total_mapped_reads_UK <- colSums(merged_counts_UK[, sample_cols_UK])
+
+# Create FPKM matrix
+fpkm_UK <- merged_counts_UK
+
+for (sample in sample_cols_UK) {
+  fpkm_UK[[sample]] <- (1e9 * merged_counts_UK[[sample]]) / 
+                    (merged_counts_UK$length * total_mapped_reads_UK[[sample]])
+}
+
+# Optional: round for readability
+fpkm_UK[, sample_cols_UK] <- round(fpkm_UK[, sample_cols_UK], 3)
+fpkm_UK<-as.data.frame(fpkm_UK)
+rownames(fpkm_UK)<- fpkm_UK$ARO_ID
+
+
+df_list <- list(fpkm_Spain, fpkm_UK)
+fpkm_all <- Reduce(function(x, y) merge(x, y, by = c("ARO_ID", "length"), all = TRUE), df_list)
+```

@@ -1,0 +1,356 @@
+---
+title: "2_merge_Spain_and_UK_db"
+output: html_document
+date: "2025-05-05"
+---
+
+#Merge Valencia and UK
+```{r load data}
+library(dplyr)
+ps_comp <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/ngless/ps_comp.Rds")
+data<-data.frame(sample_data(ps_comp))
+samples<-data$SampleID
+samples <- gsub("_[0-9]", "", samples)
+data$samples<-samples
+data$SEXO[data$SEXO == 0] <- 2
+
+delta_df <- data
+library(tidyr)
+delta_wide <- pivot_wider(delta_df, 
+                          id_cols = samples, 
+                          names_from = Timepoint, 
+                          values_from = PHES)
+
+delta_wide$deltaPHES <- delta_wide$T6 - delta_wide$T0
+# Merge deltaPHES back to the original dataframe
+data <- merge(data, delta_wide[, c("samples", "deltaPHES")], by = "samples", all.x = TRUE)
+rownames(data)<-data$SampleID
+sample_data(ps_comp)<-data
+rm(data)
+
+metadata<- data.frame(sample_data(ps_comp)) 
+data<-data.frame(sample_data(ps_comp))
+Volunteer<-data$SampleID
+Volunteer <- gsub("_[0-9]", "", Volunteer)
+data$Volunteer<-Volunteer
+data$Study[data$Group %in% c("R", "NR")] <- "Spain"
+
+library(dplyr)
+data <- data %>% select(-Tarea_conguente_corregida,
+                               -Tarea_nautra_corregida,
+                               -Tarea_incongruente_corregida,
+                               -Interferencia_corregida,
+                               -Tarea_conguente_T,
+                               -Tarea_nautra_T,
+                               -Tarea_incongruente_T,
+                               -Interferencia_T,
+                               -Bimanual..min.,
+                               -Visomotora..min.,
+                               -TR,
+                               -TA,
+                               -O,
+                               -C,
+                               -TR..Pc.,
+                               -TA..Pc.,
+                               -O..Pc.,
+                               -C..Pc.,
+                               -TOT,
+                               -CON,
+                               -VAR,
+                               -TOT..Pc.,
+                               -CON..Pc.,
+                               -VAR..Pc.,
+                               -TR...Pc.,
+                               -TR...Pc..1,
+                               -Aciertos,
+                               -Puntuación,
+                               -Errores,
+                               -Total...40,
+                               -Directos,
+                               -Inversos,
+                               -Total...43,
+                               -Letras.y.números,
+                               -fecha.analitica,
+                               -Leche.entera,
+                               -Leche.semidesnatada,
+                               -Leche.desnatada,
+                               -Yogur.natural,
+                               -Yogur.azucarado,
+                               -Queso.curado...semicurado,
+                               -Queso.blanco...fresco,
+                               -Natillas..flan..pudding..,
+                               -Helados,
+                               -Huevos,
+                               -Carne.blanca..Pollo..Pavo.,
+                               -Carne.roja..cerdo.vaca.,
+                               -Higado.y.visceras,
+                               -Jamon.York.o.Serrano,
+                               -Carnes.procesadas,
+                               -Patés..foie.grás,
+                               -Tocino..bacon.y.panceta,
+                               -Pescado.blanco,
+                               -Pescado.azul,
+                               -Marisco,
+                               -Verduras.en.crudo,
+                               -Verduras.asadas,
+                               -Verduras.fritas,
+                               -Frutas.dulces,
+                               -Frutas.ácidas,
+                               -Frutas.alto.contenido.calórico,
+                               -Frutos.secos,
+                               -Legumbres.en.crudo,
+                               -Legumbres.cocinadas,
+                               -Pan.Blanco,
+                               -Pan.integral,
+                               -Cereales,
+                               -Pasta.Integral,
+                               -Pasta,
+                               -Arroz,
+                               -Arroz.integral,
+                               -Pizza,
+                               -Aceite.de.oliva,
+                               -Otros.aceites...mantequilla,
+                               -Bollería...Pastelería.casera,
+                               -Bollería...Pastelería.industrial,
+                               -Chocolate...turrones...mantecados,
+                               -Croquetas..buñuelos..empanadillas..precocinados,
+                               -Salsas.caseras,
+                               -Salsas.industrial,
+                               -Picante..tabasco..pimiento,
+                               -Pimentón,
+                               -Sal,
+                               -Mermeladas,
+                               -Azúcar,
+                               -Miel,
+                               -Snacks.distintos.de.patatas.fritas,
+                               -Otros.alimentos.de.frecuente.uso.no.señalados.,
+                               -Bebidas.carbonatadas.con.azúcar,
+                               -Bebidas.carbonatadas.bajas.en.calorías..Light.o.zero,
+                               -Zumo.de.naranja.natural,
+                               -Zumos.naturales.de.otras.frutas,
+                               -Zumos.de.frutas.comerciales,
+                               -Café.descafeinado,
+                               -Café,
+                               -Té,
+                               -Mosto,
+                               -Vino.rosado,
+                               -Vino.tinto.joven,
+                               -Vino.tinto.añejo,
+                               -Vino.blanco,
+                               -Vino.moscatel,
+                               -Cava,
+                               -Cerveza,
+                               -Licores..anís..anisete,
+                               -Destilados..vodka..whisky..ginebra,
+                               -X.A.qué.edad.empezó.a.beber.alcohol..vino..cerveza.o.licores...incluyendo.el.que.toma.con.las.comidas.conregularidad.más.de.siete..bebidas..a.la.semana..,
+                               -X.Cuántos.años.ha.bebido.alcohol.con.regularidad.más.de.siete..bebidas..a.la.semana..,
+                               -Tipo.de.suplemento,
+                               -Observaciones,
+                               -samples
+)
+
+
+data <- data %>% rename(
+  DmGenderSexID = SEXO,
+  Group_cutoff_4 = Group,
+  BaselineVisit = Fecha.Clinico,
+  Date.Start.Rif =	Fecha.inicio.rifaximina,
+  AcademicLevel = Nivel.de.estudios,
+  Absolute_Erythrocytes = Hematies..x10.12.L.,
+  Condition = Etiología,
+  Age = EDAD,
+  Ammonia = Amonio.uM, 
+  IgA_ng = IgA..ng.ul.,
+  Haemoglobin = Hemoglobina..g.dL.,
+  Leukocytes = Leucocitos..x10.9.L.,
+  Neutrophils = Neutrofilos....,
+  Lymphocytes = Linfocitos....,
+  Monocytes = Monocitos....,
+  Eosinophils = Eosinofilos....,
+  Basophils = Basófilos....,
+  Absolute_Neutrophils = Neutrofilos.absolutos..x10.9.L.,
+  Absolute_Lymphocytes = Linfocitos.Absolutos..x10.9.L.,
+  Absolute_Monocytes = Monocitos.Absolutos..x10.9.L.,
+  Absolute_Eosinophils = Eosinofilos.absolutos..x10.9.L.,
+  Absolute_Basophils = Basófilos.absolutos..x10.9.L.,
+  Platelets = Plaquetas...10.9.L.,
+  Prothrombin_time_s = 	Tiempo.protrombina..seg.,
+  Quick_index = Indice.de.Quick....,
+  Fibrinogen = Fibrinógeno,
+  Glucose = Glucosa..mg.dL.,
+  Urea = Urea..mg.dL.,
+  Creatinine = Creatinina..mg.dL.,
+  Uric_Acid = Ácido.Úrico,
+  Total_cholesterol = Colesterol.total..mg.dL.,
+  HDL = HDL..mg.dL.,
+  VLDL = VLDL..mg.dL.,
+  LDL = LDL..mg.dL.,
+  Triglycerides = Triglicéridos..mg.dL.,
+  Total_bilirubin = Bilirubina.total..mg.dL.,
+  Total_protein = Proteinas.totales..g.dL.,
+  Albumin = Albumina..g.dL.,
+  Iron = Hierro..ug.dL.,
+  Ferritin = Ferritina..ng.dL.,
+  Folic_acid = Acido.fólico,
+  Vitamin_B12 = Vitamina.B12,
+  AST = GOT..AST...U.L.,
+  ALT = GPT..ALT.,
+  GGT = GGT..Gamma.glutamil.transpeptidasa...U.L.,
+  Alkaline_phosphatase = Fosfatasa.alcalina..ALP...U.L.,
+  LDH = LDH..mg.dL.,
+  Sodium = Sodio..mmol.L.,
+  Potassium = Potasio..mmol.L.,
+  Total_calcium = 	Calcio.total,
+  Corrected_calcium = Calcio.corregido.por.albumina,
+  Inorganic_phosphorus = Fósforo.inorgánico,
+  Chlorine = Cloro,
+  C_reactive_protein_CRP = Proteina.C.reactiva..PCR.,
+  TSH_hormone = Hormona.TSH..uUl.mL.,
+  IgG = 	IgG..mg.dL.,
+  IgM = IgM..mg.dL.,
+  IgA_mg = IgA..mg.dL.,
+  Physical_function = Función.física,
+  Physical_role = Rol.Físico,
+  Emotional_role = Rol.Emocional,
+  Menatal_health = Salud.mental,
+  Social_function = Función.social,
+  Pain = Dolor,
+  General_health = Salud.General,
+  Health_transition = Transición.de.Salud,
+  Final_Score_SF36 = Puntuación.final,
+  )
+data$Timepoint[data$Timepoint == "T3"] <- "T1"
+data$Timepoint[data$Timepoint == "T6"] <- "T2"
+
+sample_data(ps_comp)<-data
+
+#Now changing manes of Patel et al metadata and rm not needed
+
+ps_comp_UK <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bibliography/Patel_analysis/outputs/ps_comp_Patel.Rds")
+metadata_UK<- data.frame(sample_data(ps_comp_UK)) 
+metadata_UK$Study[metadata_UK$Longitudinal %in% c("Yes", "No")] <- "UK"
+
+#Fix Neutrophils data
+library(dplyr)
+
+metadata_UK <- metadata_UK %>%
+  mutate(
+    Neutrophils = case_when(
+      Timepoint == "d01" ~ OutNtrphlBrst,
+      Timepoint == "d30" ~ OutNtrphlBrst_30,
+      Timepoint == "d90" ~ Out90NtrphlBrst,
+      TRUE ~ NA_real_
+    )
+  )
+
+
+metadata_UK <- metadata_UK %>% select(-Group, 
+                                            -Bio30HaveTests,
+                                            -Bio90TestsPerformed,
+                                            -OutNtrphlBrst,
+                                            -OutNtrphlBrst_30,
+                                            -Out90NtrphlBrst)
+
+#Unknown variables: BaseLTTZ, OutNtrphlBrst vs. BPNtrph, BPAPTT, BPWBC, IFN,
+#
+
+metadata_UK <- metadata_UK %>% rename(
+  Total_calcium = BioClcm,
+  Corrected_calcium = BioCorctdClcm,
+  Creatinine = BioCrtnn,
+  Albumin = BioLvAlbmn,
+  Alkaline_phosphatase = BioLvALP,
+  ALT = BioLvALT,
+  Ammonia = BioLvAmmn,
+  AST = BioLvAST,
+  Total_bilirubin = BioLvBlrbnTtl,
+  C_reactive_protein_CRP = BioLvCRP,
+  GGT = BioLvGGT,
+  Inorganic_phosphorus = BioPhspht,
+  Potassium = BioPtsm,
+  Sodium = BioSdm,
+  Urea = BioUrea,
+  BPAPTT = BPAPTT,
+  Basophils = BPBsphils,
+  Absolute_Eosinophils = BPEosnph,
+  Fibrinogen = BPFbrngn,
+  Heamatocrite = BPHeamtcr,
+  Haemoglobin = BPHmglbn,
+  INR = BPINR,  
+  Absolute_Lymphocytes = BPLmphcts,
+  MeanCorpuscularVolume = BPMCV,
+  Absolute_Monocytes = BPMncts,
+  Absolute_Neutrophils = BPNtrphls,
+  PackedCellVolume = BPPCV,
+  Leukocytes = BPWBC,
+  IFN = IFN)
+metadata_UK$Timepoint[metadata_UK$Timepoint == "d01"] <- "T0"
+metadata_UK$Timepoint[metadata_UK$Timepoint == "d30"] <- "T1"
+metadata_UK$Timepoint[metadata_UK$Timepoint == "d90"] <- "T2"
+metadata_UK$Group_cutoff_4[metadata_UK$Group_cutoff_4 == "Responder"] <- "R"
+
+sample_data(ps_comp_UK)<-metadata_UK
+  
+ps_merged_comp <- merge_phyloseq(ps_comp, ps_comp_UK)
+
+ps_raw_ngless <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/ngless/ps_raw_ngless.Rds") 
+ps_raw_UK <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bibliography/Patel_analysis/outputs/ps_raw_Patel.Rds") 
+sample_data(ps_raw_ngless)<-data
+sample_data(ps_raw_UK)<-metadata_UK
+ps_merged_raw <- merge_phyloseq(ps_raw_ngless, ps_raw_UK)
+saveRDS(ps_merged_raw, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ps_merged_raw.Rds")
+
+ps_filtered_Spain <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/ngless/ps_filtered.Rds") 
+ps_filtered_UK <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bibliography/Patel_analysis/outputs/ps_filtered.Rds") 
+sample_data(ps_filtered_Spain)<-data
+sample_data(ps_filtered_UK)<-metadata_UK
+ps_merged_filtered <- merge_phyloseq(ps_filtered_Spain, ps_filtered_UK)
+saveRDS(ps_merged_filtered, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ps_merged_filtered.Rds")
+
+
+GMMs_ngless <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/ngless/GMMs_ngless.Rds")
+GMMs_UK <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bibliography/Patel_analysis/outputs/GMMs_Patel.Rds")
+sample_data(GMMs_ngless)<-data
+sample_data(GMMs_UK)<-metadata_UK
+GMMs_merged <- merge_phyloseq(GMMs_ngless, GMMs_UK)
+saveRDS(GMMs_merged, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/GMMs_merged.Rds")
+
+```
+
+#Add Muto
+```{r add Muto}
+ps_raw_Muto <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bibliography/Muto_analysis/outputs/ps_raw_Muto.Rds")
+GMMs_Muto <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bibliography/Muto_analysis/outputs/GMMs_Muto.Rds")
+data_muto<-data.frame(sample_data(ps_raw_Muto))
+data_muto$Group[data_muto$Group == "Responder"] <- "R"
+data_muto$Group[data_muto$Group == "Non-Responder"] <- "NR"
+data_muto$Group_cutoff_4 <- data_muto$Group
+data_muto$Group<-NULL
+data_muto$Study<-"Japan"
+data_muto$Timepoint[data_muto$Timepoint == "T1"] <- "T2"
+data_muto$SampleID <- gsub("-", "_", data_muto$SampleID )
+sample_data(ps_raw_Muto)<-data_muto
+sample_data(GMMs_Muto)<-data_muto
+
+# Get current sample names
+current_names <- sample_names(ps_raw_Muto)
+
+# Replace "-" by "_" in the names
+new_names <- gsub("-", "_", current_names)
+
+# Assign the modified names back to the phyloseq object
+sample_names(ps_raw_Muto) <- new_names
+sample_names(GMMs_Muto) <- new_names
+
+
+GMMs_merged <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/GMMs_merged.Rds")
+GMMs_merged_Muto <- merge_phyloseq(GMMs_merged, GMMs_Muto)
+saveRDS(GMMs_merged_Muto, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/GMMs_merged_Muto.Rds")
+
+ps_merged_raw <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ps_merged_raw.Rds")
+ps_merged_raw_Muto <- merge_phyloseq(ps_merged_raw, ps_raw_Muto)
+saveRDS(ps_merged_raw_Muto, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ps_merged_raw_Muto.Rds")
+
+```
+
+

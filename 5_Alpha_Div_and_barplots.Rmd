@@ -1,0 +1,284 @@
+---
+title: "4_Alpha_Div_and_barplots"
+output: html_document
+date: "2025-09-02"
+---
+```{r libraries and objects}
+library("phyloseq"); packageVersion("phyloseq")
+library(readr)
+library(data.table)
+library(ggpubr)
+library(ggrepel)
+library("ggplot2"); packageVersion("ggplot2")
+ps_raw<- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ps_merged_raw.Rds")
+# Remove Volunteer with less than 1 read from phyloseq object
+ps_0 <- prune_taxa(taxa_sums(ps_raw) > 0, ps_raw)
+ps_0
+ps_0<- subset_samples(ps_0, Group_cutoff_4 %in% c("R", "NR"))
+ps_0<- subset_samples(ps_0, Timepoint %in% c("T0", "T2"))
+```
+
+#Alpha div plots taxonomy
+
+Alpha-diversity is calculated on the raw data, here data_otu or data_phylo if you are using phyloseq.
+It is important to not use filtered data because many richness estimates are modeled on singletons and doubletons in the occurrence table. So, you need to leave them in the dataset if you want a meaningful estimate.
+Moreover, we usually not using normalized data because we want to assess the diversity on the raw data and we are not comparing Volunteer to each other but only assessing diversity within each sample.
+
+```{r Counts}
+reads_per_sample <- as.matrix(rowSums(t(as.data.frame(otu_table(ps_0)))))
+reads_per_sample 
+```
+
+```{r Alpha Diversity}
+
+library(ggsignif)
+#Shannon
+Shannon<-phyloseq::estimate_richness(ps_0, measures = "Shannon")
+metadata<- data.frame(sample_data(ps_0)) 
+Shannon$Timepoint<-metadata$Timepoint
+Shannon$Group_cutoff_4<-metadata$Group_cutoff_4
+Shannon$Volunteer<-metadata$Volunteer
+Shannon$Study<-metadata$Study
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+Shannon$GroupTime <-metadata$GroupTime 
+pShannon<- ggplot(Shannon, aes(x = GroupTime, y = Shannon)) +
+    geom_boxplot(aes(fill = Group_cutoff_4), position = position_dodge(width = 0.8), alpha = 0.25) +
+    geom_jitter(aes(color = Study), alpha =1,
+                position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 2.5) +
+    scale_fill_manual(values = c("NR" = "#882255", "R" = "#999933"), name = "Group cutoff 4") +
+    scale_color_manual(values = c("Spain" = "#CC6677", "UK" = "#88CCEE"), name = "Cohort") +
+    theme_minimal() +
+    labs(x = "Group cutoff 4 and Timepoint", y = "Shannon Index")
+
+#Chao1
+Chao1<-phyloseq::estimate_richness(ps_0, measures = "Chao1")
+metadata<- data.frame(sample_data(ps_0)) 
+Chao1$Timepoint<-metadata$Timepoint
+Chao1$Group_cutoff_4<-metadata$Group_cutoff_4
+Chao1$Volunteer<-metadata$Volunteer
+Chao1$Study<-metadata$Study
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+Chao1$GroupTime <-metadata$GroupTime 
+pChao1<- ggplot(Chao1, aes(x = GroupTime, y = Chao1)) +
+    geom_boxplot(aes(fill = Group_cutoff_4), position = position_dodge(width = 0.8), alpha = 0.25) +
+    geom_jitter(aes(color = Study), alpha =1,
+                position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 2.5) +
+    scale_fill_manual(values = c("NR" = "#882255", "R" = "#999933"), name = "Group cutoff 4") +
+    scale_color_manual(values = c("Spain" = "#CC6677", "UK" = "#88CCEE"), name = "Cohort") +
+    theme_minimal() +
+    labs(x = "Group cutoff 4 and Timepoint", y = "Chao1 Index")
+
+#Fisher
+Fisher<-phyloseq::estimate_richness(ps_0, measures = "Fisher")
+metadata<- data.frame(sample_data(ps_0))
+Fisher$Timepoint<-metadata$Timepoint
+Fisher$Group_cutoff_4<-metadata$Group_cutoff_4
+Fisher$Volunteer<-metadata$Volunteer
+Fisher$Study<-metadata$Study
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+Fisher$GroupTime <-metadata$GroupTime 
+pFisher<- ggplot(Fisher, aes(x = GroupTime, y = Fisher)) +
+    geom_boxplot(aes(fill = Group_cutoff_4), position = position_dodge(width = 0.8), alpha = 0.25) +
+    geom_jitter(aes(color = Study), alpha =1,
+                position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 2.5) +
+    scale_fill_manual(values = c("NR" = "#882255", "R" = "#999933"), name = "Group cutoff 4") +
+    scale_color_manual(values = c("Spain" = "#CC6677", "UK" = "#88CCEE"), name = "Cohort") +
+    theme_minimal() +
+    labs(x = "Group cutoff 4 and Timepoint", y = "Fisher Index")
+
+
+ggarrange(pShannon, pFisher, pChao1, common.legend = TRUE, legend="bottom",nrow = 1)
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Alpha_Div_all.pdf", height = 5, width = 7.5)
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Alpha_Div_all.svg", height = 5, width = 7.5)
+#Error in loadNamespace(x) : there is no package called ‘svglite’
+
+```
+
+
+```{r comaprisons for significance}
+# Perform t-tests for the specific pairs
+t1 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0"],
+             Shannon$Shannon[Shannon$GroupTime == "NR_T2"])
+t2 <- t.test(Shannon$Shannon[Shannon$GroupTime == "R_T0"],
+             Shannon$Shannon[Shannon$GroupTime == "R_T2"])
+t3<-t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0" & Shannon$Study == "Spain"],
+       Shannon$Shannon[Shannon$GroupTime == "NR_T0" & Shannon$Study == "UK"])
+t4<-t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T2" & Shannon$Study == "Spain"],
+       Shannon$Shannon[Shannon$GroupTime == "NR_T2" & Shannon$Study == "UK"])
+t5<-t.test(Shannon$Shannon[Shannon$GroupTime == "R_T0" & Shannon$Study == "Spain"],
+       Shannon$Shannon[Shannon$GroupTime == "R_T0" & Shannon$Study == "UK"])
+t6<-t.test(Shannon$Shannon[Shannon$GroupTime == "R_T2" & Shannon$Study == "Spain"],
+       Shannon$Shannon[Shannon$GroupTime == "R_T2" & Shannon$Study == "UK"])
+t7 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0"],
+             Shannon$Shannon[Shannon$GroupTime == "R_T0"])
+t8 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T2"],
+             Shannon$Shannon[Shannon$GroupTime == "R_T2"])
+
+# Combine results into a data frame for p-value adjustment
+test_results_Sannon <- data.frame(
+    comparison = c("NR_T0 vs NR_T2", "R_T0 vs R_T2", "NR_T0 Spain vs NR_T0 UK", "NR_T2 Spain vs NR_T2 UK", "R_T0 Spain vs R_T0 UK", "R_T2 Spain vs R_T2 UK", "NR_T0 vs R_T0", "NR_T2 vs R_T2"),
+    p_value = c(t1$p.value, t2$p.value, t3$p.value, t4$p.value, t5$p.value, t6$p.value, t7$p.value, t8$p.value)
+)
+
+# Adjust p-values using BH method
+test_results_Sannon$p_adj <- p.adjust(test_results$p_value, method = "BH")
+test_results_Sannon
+
+#> test_results_Shannon
+#               comparison   p_value     p_adj
+#1          NR_T0 vs NR_T2 0.6479653 0.8071154
+#2            R_T0 vs R_T2 0.7062260 0.8071154
+#3 NR_T0 Spain vs NR_T0 UK 0.3507639 0.7115112
+#4 NR_T2 Spain vs NR_T2 UK 0.6586883 0.8071154
+#5   R_T0 Spain vs R_T0 UK 0.3557556 0.7115112
+#6   R_T2 Spain vs R_T2 UK 0.3454075 0.7115112
+#7           NR_T0 vs R_T0 0.2652264 0.7115112
+#8           NR_T2 vs R_T2 0.8477300 0.8477300
+
+# Perform t-tests for the specific pairs
+t1 <- t.test(Fisher$Fisher[Fisher$GroupTime == "NR_T0"],
+             Fisher$Fisher[Fisher$GroupTime == "NR_T2"])
+t2 <- t.test(Fisher$Fisher[Fisher$GroupTime == "R_T0"],
+             Fisher$Fisher[Fisher$GroupTime == "R_T2"])
+t3<-t.test(Fisher$Fisher[Fisher$GroupTime == "NR_T0" & Fisher$Study == "Spain"],
+           Fisher$Fisher[Fisher$GroupTime == "NR_T0" & Fisher$Study == "UK"])
+t4<-t.test(Fisher$Fisher[Fisher$GroupTime == "NR_T2" & Fisher$Study == "Spain"],
+           Fisher$Fisher[Fisher$GroupTime == "NR_T2" & Fisher$Study == "UK"])
+t5<-t.test(Fisher$Fisher[Fisher$GroupTime == "R_T0" & Fisher$Study == "Spain"],
+           Fisher$Fisher[Fisher$GroupTime == "R_T0" & Fisher$Study == "UK"])
+t6<-t.test(Fisher$Fisher[Fisher$GroupTime == "R_T2" & Fisher$Study == "Spain"],
+           Fisher$Fisher[Fisher$GroupTime == "R_T2" & Fisher$Study == "UK"])
+t7 <- t.test(Fisher$Fisher[Fisher$GroupTime == "NR_T0"],
+             Fisher$Fisher[Fisher$GroupTime == "R_T0"])
+t8 <- t.test(Fisher$Fisher[Fisher$GroupTime == "NR_T2"],
+             Fisher$Fisher[Fisher$GroupTime == "R_T2"])
+
+# Combine results into a data frame for p-value adjustment
+test_results_Fisher <- data.frame(
+  comparison = c("NR_T0 vs NR_T2", "R_T0 vs R_T2", "NR_T0 Spain vs NR_T0 UK", "NR_T2 Spain vs NR_T2 UK", "R_T0 Spain vs R_T0 UK", "R_T2 Spain vs R_T2 UK", "NR_T0 vs R_T0", "NR_T2 vs R_T2"),
+  p_value = c(t1$p.value, t2$p.value, t3$p.value, t4$p.value, t5$p.value, t6$p.value, t7$p.value, t8$p.value)
+)
+
+# Adjust p-values using BH method
+test_results_Fisher$p_adj <- p.adjust(test_results$p_value, method = "BH")
+test_results_Fisher
+
+#> test_results_Fisher
+#               comparison   p_value     p_adj
+#1          NR_T0 vs NR_T2 0.4200665 0.8071154
+#2            R_T0 vs R_T2 0.7300266 0.8071154
+#3 NR_T0 Spain vs NR_T0 UK 0.8703186 0.7115112
+#4 NR_T2 Spain vs NR_T2 UK 0.9150340 0.8071154
+#5   R_T0 Spain vs R_T0 UK 0.7678223 0.7115112
+#6   R_T2 Spain vs R_T2 UK 0.7373593 0.7115112
+#7           NR_T0 vs R_T0 0.7459450 0.7115112
+#8           NR_T2 vs R_T2 0.5768418 0.8477300
+
+# Perform t-tests for the specific pairs
+t1 <- t.test(Chao1$Chao1[Chao1$GroupTime == "NR_T0"],
+             Chao1$Chao1[Chao1$GroupTime == "NR_T2"])
+t2 <- t.test(Chao1$Chao1[Chao1$GroupTime == "R_T0"],
+             Chao1$Chao1[Chao1$GroupTime == "R_T2"])
+t3<-t.test(Chao1$Chao1[Chao1$GroupTime == "NR_T0" & Chao1$Study == "Spain"],
+           Chao1$Chao1[Chao1$GroupTime == "NR_T0" & Chao1$Study == "UK"])
+t4<-t.test(Chao1$Chao1[Chao1$GroupTime == "NR_T2" & Chao1$Study == "Spain"],
+           Chao1$Chao1[Chao1$GroupTime == "NR_T2" & Chao1$Study == "UK"])
+t5<-t.test(Chao1$Chao1[Chao1$GroupTime == "R_T0" & Chao1$Study == "Spain"],
+           Chao1$Chao1[Chao1$GroupTime == "R_T0" & Chao1$Study == "UK"])
+t6<-t.test(Chao1$Chao1[Chao1$GroupTime == "R_T2" & Chao1$Study == "Spain"],
+           Chao1$Chao1[Chao1$GroupTime == "R_T2" & Chao1$Study == "UK"])
+t7 <- t.test(Chao1$Chao1[Chao1$GroupTime == "NR_T0"],
+             Chao1$Chao1[Chao1$GroupTime == "R_T0"])
+t8 <- t.test(Chao1$Chao1[Chao1$GroupTime == "NR_T2"],
+             Chao1$Chao1[Chao1$GroupTime == "R_T2"])
+
+# Combine results into a data frame for p-value adjustment
+test_results_Chao1 <- data.frame(
+  comparison = c("NR_T0 vs NR_T2", "R_T0 vs R_T2", "NR_T0 Spain vs NR_T0 UK", "NR_T2 Spain vs NR_T2 UK", "R_T0 Spain vs R_T0 UK", "R_T2 Spain vs R_T2 UK", "NR_T0 vs R_T0", "NR_T2 vs R_T2"),
+  p_value = c(t1$p.value, t2$p.value, t3$p.value, t4$p.value, t5$p.value, t6$p.value, t7$p.value, t8$p.value)
+)
+
+# Adjust p-values using BH method
+test_results_Chao1$p_adj <- p.adjust(test_results$p_value, method = "BH")
+test_results_Chao1
+
+#> test_results_Chao1
+#               comparison   p_value     p_adj
+#1          NR_T0 vs NR_T2 0.4444955 0.8071154
+#2            R_T0 vs R_T2 0.6991097 0.8071154
+#3 NR_T0 Spain vs NR_T0 UK 0.9941434 0.7115112
+#4 NR_T2 Spain vs NR_T2 UK 0.9975190 0.8071154
+#5   R_T0 Spain vs R_T0 UK 0.5659401 0.7115112
+#6   R_T2 Spain vs R_T2 UK 0.6513523 0.7115112
+#7           NR_T0 vs R_T0 0.6535484 0.7115112
+#8           NR_T2 vs R_T2 0.5656997 0.8477300
+```
+
+
+#GMMs
+
+```{r libraries and objects}
+library("phyloseq"); packageVersion("phyloseq")
+library(readr)
+library(data.table)
+library(ggpubr)
+library(ggrepel)
+library("ggplot2"); packageVersion("ggplot2")
+GMM_raw<- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/GMMs_merged.Rds")
+# Remove Volunteer with less than 1 read from phyloseq object
+GMM_0 <- prune_taxa(taxa_sums(GMM_raw) > 0, GMM_raw)
+GMM_0
+GMM_0<- subset_samples(GMM_0, Group_cutoff_4 %in% c("R", "NR"))
+GMM_0<- subset_samples(GMM_0, Timepoint %in% c("T0", "T2"))
+```
+
+```{r GMM Aplha Diversity}
+
+library(ggsignif)
+#Shannon
+Shannon<-phyloseq::estimate_richness(GMM_0, measures = "Shannon")
+metadata<- data.frame(sample_data(GMM_0)) 
+Shannon$Timepoint<-metadata$Timepoint
+Shannon$Group_cutoff_4<-metadata$Group_cutoff_4
+Shannon$Volunteer<-metadata$Volunteer
+Shannon$Study<-metadata$Study
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+Shannon$GroupTime <-metadata$GroupTime 
+pShannon<- ggplot(Shannon, aes(x = GroupTime, y = Shannon)) +
+  geom_boxplot(aes(fill = Group_cutoff_4), position = position_dodge(width = 0.8), alpha = 0.25) +
+  geom_jitter(aes(color = Study), alpha =1,
+              position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 2.5) +
+  scale_fill_manual(values = c("NR" = "#882255", "R" = "#999933"), name = "Group cutoff 4") +
+  scale_color_manual(values = c("Spain" = "#CC6677", "UK" = "#88CCEE"), name = "Cohort") +
+  theme_minimal() +
+  labs(x = "Group cutoff 4 and Timepoint", y = "Shannon Index")
+
+# Extract OTU table - samples in columns or rows (transpose if needed)
+otu_counts <- as.data.frame(t(otu_table(GMM_0)))
+
+
+# Calculate total reads per sample
+total_reads <- rowSums(otu_counts)
+
+# Create data frame and add metadata
+metadata <- data.frame(sample_data(GMM_0))
+total_reads_df <- data.frame(Sample = rownames(metadata), TotalReads = total_reads)
+total_reads_df$Timepoint <- metadata$Timepoint
+total_reads_df$Group_cutoff_4 <- metadata$Group_cutoff_4
+total_reads_df$Volunteer <- metadata$Volunteer
+total_reads_df$Study <- metadata$Study
+
+# Create combined group variable if needed
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+total_reads_df$GroupTime <- metadata$GroupTime
+
+# Plot total reads with ggplot2
+pTotalReads <- ggplot(total_reads_df, aes(x = GroupTime, y = TotalReads)) +
+    geom_boxplot(aes(fill = Group_cutoff_4), position = position_dodge(width = 0.8), alpha = 0.25) +
+    geom_jitter(aes(color = Study), alpha = 1,
+                position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 2.5) +
+    scale_fill_manual(values = c("NR" = "#882255", "R" = "#999933"), name = "Group cutoff 4") +
+    scale_color_manual(values = c("Spain" = "#CC6677", "UK" = "#88CCEE"), name = "Cohort") +
+    theme_minimal() +
+    labs(x = "Group cutoff 4 and Timepoint", y = "Total Reads")
+```

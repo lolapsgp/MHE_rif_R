@@ -96,7 +96,7 @@ for (sample in sample_cols) {
 }
 
 # Round
-fpkm_Spain[, sample_cols] <- round(fpkm_Spain[, sample_cols], 2)
+fpkm_Spain[, sample_cols] <- round(fpkm_Spain[, sample_cols], 1)
 fpkm_Spain<-as.data.frame(fpkm_Spain)
 rownames(fpkm_Spain) <- fpkm_Spain$ARO_ID
 
@@ -155,7 +155,7 @@ for (sample in sample_cols_UK) {
 }
 
 # Optional: round for readability
-fpkm_UK[, sample_cols_UK] <- round(fpkm_UK[, sample_cols_UK], 3)
+fpkm_UK[, sample_cols_UK] <- round(fpkm_UK[, sample_cols_UK], 1)
 fpkm_UK<-as.data.frame(fpkm_UK)
 rownames(fpkm_UK)<- fpkm_UK$ARO_ID
 
@@ -163,7 +163,7 @@ fpkm_all <- merge(fpkm_Spain, fpkm_UK, by = "ARO_ID", all = TRUE)
 fpkm_all[is.na(fpkm_all)] <- 0
 ```
 
-#phyloseq object rgi
+#rgi phyloseq object 
 ```{r phyloseq}
 library(phyloseq)
 
@@ -208,6 +208,78 @@ saveRDS(ARGs_rgi, file = "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuenc
 
 
 #ResFinder
+```{r tax data}
+library(dplyr)
+library(readr)
+library(stringr)
+library(purrr)
+
+resfinder_dir <- "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Assembly/Resfinder_results"
+resfinder_files <- list.files(resfinder_dir, pattern = "ResFinder_results_tab.txt$", recursive = TRUE, full.names = TRUE)
+
+# Function to extract sample name and format columns
+read_ResFinder_results_tab <- function(file) {
+  sample <- basename(dirname(file)) # Extracts sample name from parent folder
+  df <- read_tsv(file, show_col_types = FALSE) %>%
+    mutate(Sample = sample) %>%
+    select(
+      Sample,
+      `Resistance gene`,
+      Identity,
+      `Alignment Length/Gene Length`,
+      Coverage,
+      `Position in reference`,
+      Contig,
+      `Position in contig`,
+      Phenotype,
+      `Accession no.`
+    )
+  return(df)
+}
+
+# Combine all tables
+resfinder_data_Spain <- map_df(resfinder_files, read_ResFinder_results_tab)
+resfinder_data_Spain<- resfinder_data_Spain[, c("Resistance gene", "Phenotype")]
+resfinder_data_Spain <- resfinder_data_Spain %>%
+  distinct(`Resistance gene`, .keep_all = TRUE)
+
+resfinder_dir_UK <- "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bibliography/Patel_2021_09_10/Assembly/Resfinder_results"
+resfinder_files_UK <- list.files(resfinder_dir_UK, pattern = "ResFinder_results_tab.txt$", recursive = TRUE, full.names = TRUE)
+
+# Function to extract sample name and format columns
+read_ResFinder_results_tab <- function(file) {
+  sample <- basename(dirname(file)) # Extracts sample name from parent folder
+  df <- read_tsv(file, show_col_types = FALSE) %>%
+    mutate(Sample = sample) %>%
+    mutate(Identity = as.numeric(Identity)) %>%
+    mutate(Coverage = as.numeric(Coverage)) %>%
+    select(
+      Sample,
+      `Resistance gene`,
+      Identity,
+      `Alignment Length/Gene Length`,
+      Coverage,
+      `Position in reference`,
+      Contig,
+      `Position in contig`,
+      Phenotype,
+      `Accession no.`
+    )
+  return(df)
+}
+
+# Combine all tables
+resfinder_data_UK <- map_df(resfinder_files_UK, read_ResFinder_results_tab)
+resfinder_data_UK<- resfinder_data_UK[, c("Resistance gene", "Phenotype")]
+resfinder_data_UK <- resfinder_data_UK %>%
+  distinct(`Resistance gene`, .keep_all = TRUE)
+
+resfinder_data<-merge(resfinder_data_Spain, resfinder_data_UK, all = TRUE)
+resfinder_data<-as.data.frame(resfinder_data)
+rownames(resfinder_data)<- resfinder_data$`Resistance gene`
+
+```
+
 ```{r counts matrix}
 library(tidyverse)
 library(purrr)
@@ -237,29 +309,34 @@ counts_list <- lapply(idx_files, read_idxstats)
 merged_counts <- purrr::reduce(counts_list, full_join, by = c("ARO_ID", "length"))
 merged_counts[is.na(merged_counts)] <- 0  # Replace NAs with 0
 
+cleaned_counts <- merged_counts %>%
+    mutate(ARO_ID = sub("_.*$", "", ARO_ID)) %>%
+    group_by(ARO_ID) %>%
+    summarise(
+        length = max(length),  # keep the max length for exaple, we replace later by reference gene length
+        across(where(is.numeric) & !matches("length"), sum),  # sum other numeric columns
+        .groups = "drop"
+    )%>%
+    filter(ARO_ID != "*")
+
 # Extract sample names (excluding ARO_ID and length)
-sample_cols <- colnames(merged_counts)[-(1:2)]
+sample_cols <- colnames(cleaned_counts)[-(1:2)]
 
 # Compute total mapped reads per sample
-total_mapped_reads_Spain <- colSums(merged_counts[, sample_cols])
+total_mapped_reads_Spain <- colSums(cleaned_counts[, sample_cols])
 
 # Create FPKM matrix
-fpkm_Spain <- merged_counts
+fpkm_Spain_ResFinder <- cleaned_counts
 
 for (sample in sample_cols) {
-  fpkm_Spain[[sample]] <- (1e9 * merged_counts[[sample]]) / 
-                    (merged_counts$length * total_mapped_reads_Spain[[sample]])
+  fpkm_Spain_ResFinder[[sample]] <- (1e9 * cleaned_counts[[sample]]) / 
+                    (cleaned_counts$length * total_mapped_reads_Spain[[sample]])
 }
 
 # Optional: round for readability
-fpkm_Spain[, sample_cols] <- round(fpkm_Spain[, sample_cols], 3)
-# Extract the base ARO_ID without the "_1" suffix
-base_ids <- sub("_1$", "", fpkm_Spain$ARO_ID)
-# For each base ID, assign incremental suffix starting from 1
-fpkm_Spain$ARO_ID_unique <- with(fpkm_Spain,
-    paste0(base_ids, "_", ave(base_ids, base_ids, FUN = seq_along)))
-# Set rownames using the updated unique IDs
-rownames(fpkm_Spain) <- fpkm_Spain$ARO_ID_unique
+fpkm_Spain_ResFinder[, sample_cols] <- round(fpkm_Spain_ResFinder[, sample_cols], 1)
+fpkm_Spain_ResFinder<-as.data.frame(fpkm_Spain_ResFinder)
+rownames(fpkm_Spain_ResFinder) <- fpkm_Spain_ResFinder$ARO_ID
 
 
 #UK
@@ -272,26 +349,65 @@ counts_list_UK <- lapply(idx_files_UK, read_idxstats)
 merged_counts_UK <- purrr::reduce(counts_list_UK, full_join, by = c("ARO_ID", "length"))
 merged_counts_UK[is.na(merged_counts_UK)] <- 0  # Replace NAs with 0
 
+cleaned_counts_UK <- merged_counts_UK %>%
+    mutate(ARO_ID = sub("_.*$", "", ARO_ID)) %>%
+    group_by(ARO_ID) %>%
+    summarise(
+        length = max(length),  # keep the max length for exaple, we replace later by reference gene length
+        across(where(is.numeric) & !matches("length"), sum),  # sum other numeric columns
+        .groups = "drop"
+    )%>%
+    filter(ARO_ID != "*")
+
 # Extract sample names (excluding ARO_ID and length)
-sample_cols_UK <- colnames(merged_counts_UK)[-(1:2)]
+sample_cols_UK <- colnames(cleaned_counts_UK)[-(1:2)]
 
 # Compute total mapped reads per sample
-total_mapped_reads_UK <- colSums(merged_counts_UK[, sample_cols_UK])
+total_mapped_reads_UK <- colSums(cleaned_counts_UK[, sample_cols_UK])
 
 # Create FPKM matrix
-fpkm_UK <- merged_counts_UK
+fpkm_UK_ResFinder <- cleaned_counts_UK
 
 for (sample in sample_cols_UK) {
-  fpkm_UK[[sample]] <- (1e9 * merged_counts_UK[[sample]]) / 
-                    (merged_counts_UK$length * total_mapped_reads_UK[[sample]])
+  fpkm_UK_ResFinder[[sample]] <- (1e9 * cleaned_counts_UK[[sample]]) / 
+                    (cleaned_counts_UK$length * total_mapped_reads_UK[[sample]])
 }
 
 # Optional: round for readability
-fpkm_UK[, sample_cols_UK] <- round(fpkm_UK[, sample_cols_UK], 3)
-fpkm_UK<-as.data.frame(fpkm_UK)
-rownames(fpkm_UK)<- fpkm_UK$ARO_ID
+fpkm_UK_ResFinder[, sample_cols_UK] <- round(fpkm_UK_ResFinder[, sample_cols_UK], 1)
+fpkm_UK_ResFinder<-as.data.frame(fpkm_UK_ResFinder)
+rownames(fpkm_UK_ResFinder)<- fpkm_UK_ResFinder$ARO_ID
 
 
-df_list <- list(fpkm_Spain, fpkm_UK)
-fpkm_all <- Reduce(function(x, y) merge(x, y, by = c("ARO_ID", "length"), all = TRUE), df_list)
+df_list <- list(fpkm_Spain_ResFinder, fpkm_UK_ResFinder)
+fpkm_all_ResFinder <- Reduce(function(x, y) merge(x, y, by = c("ARO_ID"), all = TRUE), df_list)
+fpkm_all_ResFinder[is.na(fpkm_all_ResFinder)] <- 0 
+rownames(fpkm_all_ResFinder)<- fpkm_all_ResFinder$ARO_ID
 ```
+
+
+#ResFinder phyloseq object 
+```{r phyloseq}
+library(phyloseq)
+
+otu_data<-fpkm_all_ResFinder
+rownames(otu_data)<-otu_data$ARO_ID
+otu_data$ARO_ID<-NULL
+tax_data <- resfinder_data
+
+GMMs_merged <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/GMMs_merged.Rds")
+metadata<-data.frame(sample_data(GMMs_merged))
+
+rm(GMMs_merged)
+
+OTU = otu_table(as.matrix(otu_data), taxa_are_rows = TRUE)
+TAX = tax_table(as.matrix(tax_data))
+SAMPLE <- sample_data(metadata)
+
+ # merge the data
+ARGs_ResFinder <- phyloseq(OTU, TAX, SAMPLE)
+
+saveRDS(ARGs_ResFinder, file = "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bibliography/Patel_analysis/outputs/ARGs_ResFinder.Rds")
+
+```
+

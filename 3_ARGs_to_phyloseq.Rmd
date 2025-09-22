@@ -96,7 +96,7 @@ for (sample in sample_cols) {
 }
 
 # Round
-fpkm_Spain[, sample_cols] <- round(fpkm_Spain[, sample_cols], 1)
+fpkm_Spain[, sample_cols] <- round(fpkm_Spain[, sample_cols], 0)
 fpkm_Spain<-as.data.frame(fpkm_Spain)
 rownames(fpkm_Spain) <- fpkm_Spain$ARO_ID
 
@@ -155,7 +155,7 @@ for (sample in sample_cols_UK) {
 }
 
 # Optional: round for readability
-fpkm_UK[, sample_cols_UK] <- round(fpkm_UK[, sample_cols_UK], 1)
+fpkm_UK[, sample_cols_UK] <- round(fpkm_UK[, sample_cols_UK], 0)
 fpkm_UK<-as.data.frame(fpkm_UK)
 rownames(fpkm_UK)<- fpkm_UK$ARO_ID
 
@@ -201,7 +201,7 @@ SAMPLE <- sample_data(metadata)
  # merge the data
 ARGs_rgi <- phyloseq(OTU, TAX, SAMPLE)
 
-saveRDS(ARGs_rgi, file = "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bibliography/Patel_analysis/outputs/ARGs_rgi.Rds")
+saveRDS(ARGs_rgi, file = "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ARGs_rgi.Rds")
 
 ```
 
@@ -334,7 +334,7 @@ for (sample in sample_cols) {
 }
 
 # Optional: round for readability
-fpkm_Spain_ResFinder[, sample_cols] <- round(fpkm_Spain_ResFinder[, sample_cols], 1)
+fpkm_Spain_ResFinder[, sample_cols] <- round(fpkm_Spain_ResFinder[, sample_cols], 0)
 fpkm_Spain_ResFinder<-as.data.frame(fpkm_Spain_ResFinder)
 rownames(fpkm_Spain_ResFinder) <- fpkm_Spain_ResFinder$ARO_ID
 
@@ -374,7 +374,7 @@ for (sample in sample_cols_UK) {
 }
 
 # Optional: round for readability
-fpkm_UK_ResFinder[, sample_cols_UK] <- round(fpkm_UK_ResFinder[, sample_cols_UK], 1)
+fpkm_UK_ResFinder[, sample_cols_UK] <- round(fpkm_UK_ResFinder[, sample_cols_UK], 0)
 fpkm_UK_ResFinder<-as.data.frame(fpkm_UK_ResFinder)
 rownames(fpkm_UK_ResFinder)<- fpkm_UK_ResFinder$ARO_ID
 
@@ -407,7 +407,7 @@ SAMPLE <- sample_data(metadata)
  # merge the data
 ARGs_ResFinder <- phyloseq(OTU, TAX, SAMPLE)
 
-saveRDS(ARGs_ResFinder, file = "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bibliography/Patel_analysis/outputs/ARGs_ResFinder.Rds")
+saveRDS(ARGs_ResFinder, file = "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ARGs_ResFinder.Rds")
 
 ```
 

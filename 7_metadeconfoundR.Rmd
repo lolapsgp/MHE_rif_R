@@ -1,0 +1,307 @@
+---
+title: "7_metadeconfoundR"
+output: html_document
+date: "2025-09-23"
+---
+
+```{r Changing names ASVs}
+library(tidyr)
+library(tibble)
+library(purrr)
+require(phyloseq)
+require(tidyverse)
+require(magrittr)
+
+get_latest_annotation_ASV <- function(phyloseq_obj) {
+  tax_table <- phyloseq_obj@tax_table %>%
+    as.data.frame() %>%
+    rownames_to_column('ASV') %>%
+    as_tibble() %>%
+    tidyr::gather('Rank', 'Value', -ASV) %>%
+    nest(data = -ASV) %>%
+    mutate(TaxaID = map_chr(data, function(x) {
+      x %>%
+        dplyr::filter(!is.na(Value)) %>%
+        magrittr::use_series(Value) %>%
+        tail(1)
+    })) %>%
+    mutate(TaxaUp = map_chr(data, function(x) {
+      x %>%
+        dplyr::filter(!is.na(Value)) %>%
+        magrittr::use_series(Value) %>%
+        tail(2) %>% head(1)
+    })) %>%
+    mutate(TaxaID = paste(ASV, TaxaID)) %>%
+    dplyr::select(-c(data, TaxaUp))
+  
+  return(tax_table)
+}
+
+```
+
+
+#Taxonomy
+```{r tax metadeconfoundR}
+library("phyloseq"); packageVersion("phyloseq")
+library(readr)
+library(metadeconfoundR)
+library("ggplot2"); packageVersion("ggplot2")
+ps_clr_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ps_clr_corrected.Rds")
+ps_clr_corrected<- subset_samples(ps_clr_corrected, Group_cutoff_4 %in% c("R", "NR"))
+ps_clr_corrected<- subset_samples(ps_clr_corrected, Timepoint %in% c("T0", "T2"))
+ps_clr_corrected<- subset_samples(ps_clr_corrected, Longitudinal %in% c("Yes"))
+metadata<-as.data.frame(sample_data(ps_clr_corrected))
+metadata<-metadata[,c("DmGenderSexID","Group_cutoff_4", "Age", "PHES", "Ammonia","IL6", "Haemoglobin", "Leukocytes", "Absolute_Neutrophils", "Absolute_Lymphocytes", "Absolute_Monocytes", "Absolute_Eosinophils", "INR", "Fibrinogen", "Urea", "Creatinine", "Total_bilirubin", "Albumin", "AST", "ALT", "GGT", "Alkaline_phosphatase", "Sodium", "Potassium", "Timepoint", "Volunteer", "Study")]
+metadata$Albumin[metadata$Study == "Spain"] <- metadata$Albumin[metadata$Study == "Spain"] * 10
+metadata$Neutrophils <- (metadata$Absolute_Neutrophils/metadata$Leukocytes)*100
+metadata$Lymphocytes <- (metadata$Absolute_Lymphocytes/metadata$Leukocytes)*100
+metadata$Monocytes <- (metadata$Absolute_Monocytes/metadata$Leukocytes)*100
+metadata$Eosinophils <- (metadata$Absolute_Eosinophils/metadata$Leukocytes)*100
+
+metadata1<-metadata
+
+# 0 is female 1 is male
+metadata$DmGenderSexID[metadata$DmGenderSexID == 2] <- 0
+sample_data(ps_clr_corrected) <- sample_data(metadata)
+metadata<-data.frame(metadata)
+metadata <- metadata %>% mutate(Group_cutoff_4 = ifelse(Group_cutoff_4=="R",1,0))
+metadata <- metadata %>% mutate(Study = ifelse(Study=="Spain",1,0))
+
+#Data OTUs
+latest_annotations <- get_latest_annotation_ASV(ps_clr_corrected)
+latest_annotations<-as.data.frame(latest_annotations)
+short_names<-as.data.frame(otu_table(ps_clr_corrected))
+rownames(short_names)<-latest_annotations$TaxaID
+Meta_Species <- t(short_names) 
+
+# check correct ordering
+all(rownames(metadata) == rownames(Meta_Species))
+## [1] TRUE
+all(order(rownames(metadata)) == order(rownames(Meta_Species)))
+## [1] TRUE
+Meta_Species<- as.data.frame(Meta_Species)
+
+Metadec_tax <- MetaDeconfound(featureMat = as.data.frame(Meta_Species),
+                                     metaMat = as.data.frame(metadata), nnodes = 3, randomVar = c("Volunteer", "Study"))
+
+#Plot
+View(Metadec_tax)
+
+Output_heatmap <- BuildHeatmap(Metadec_tax)
+plot(Output_heatmap)
+
+raw_p_Cognition_tax <- Metadec_tax[1]
+corr_p_Cognition_tax <- Metadec_tax[2]
+effect_size_Cognition_tax <- Metadec_tax[3]
+status_Cognition_tax <- Metadec_tax[4]
+
+saveRDS(Metadec_tax, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/metadeconfoundR/Metadec_tax.Rds")
+
+
+```
+
+
+# GMMs
+```{r GMMs metadeconfoundR}
+library("phyloseq"); packageVersion("phyloseq")
+library(readr)
+library(metadeconfoundR)
+library("ggplot2"); packageVersion("ggplot2")
+GMMs_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/GMMs_corrected.Rds")
+GMMs_corrected<- subset_samples(GMMs_corrected, Group_cutoff_4 %in% c("R", "NR"))
+GMMs_corrected<- subset_samples(GMMs_corrected, Timepoint %in% c("T0", "T2"))
+GMMs_corrected<- subset_samples(GMMs_corrected, Longitudinal %in% c("Yes"))
+metadata<-as.data.frame(sample_data(GMMs_corrected))
+metadata<-metadata[,c("DmGenderSexID","Group_cutoff_4", "Age", "PHES", "Ammonia","IL6", "Haemoglobin", "Leukocytes", "Absolute_Neutrophils", "Absolute_Lymphocytes", "Absolute_Monocytes", "Absolute_Eosinophils", "INR", "Fibrinogen", "Urea", "Creatinine", "Total_bilirubin", "Albumin", "AST", "ALT", "GGT", "Alkaline_phosphatase", "Sodium", "Potassium", "Timepoint", "Volunteer", "Study")]
+metadata$Albumin[metadata$Study == "Spain"] <- metadata$Albumin[metadata$Study == "Spain"] * 10
+metadata$Neutrophils <- (metadata$Absolute_Neutrophils/metadata$Leukocytes)*100
+metadata$Lymphocytes <- (metadata$Absolute_Lymphocytes/metadata$Leukocytes)*100
+metadata$Monocytes <- (metadata$Absolute_Monocytes/metadata$Leukocytes)*100
+metadata$Eosinophils <- (metadata$Absolute_Eosinophils/metadata$Leukocytes)*100
+
+metadata1<-metadata
+
+# 0 is female 1 is male
+metadata$DmGenderSexID[metadata$DmGenderSexID == 2] <- 0
+sample_data(GMMs_corrected) <- sample_data(metadata)
+metadata<-data.frame(metadata)
+metadata <- metadata %>% mutate(Group_cutoff_4 = ifelse(Group_cutoff_4=="R",1,0))
+metadata <- metadata %>% mutate(Study = ifelse(Study=="Spain",1,0))
+
+#Names Modules
+Meta_GMMs <- as.data.frame((otu_table(GMMs_corrected)))
+long_names<-as.data.frame(tax_table(GMMs_corrected))
+rownames(Meta_GMMs)= long_names$V2[match(rownames(Meta_GMMs),rownames(long_names))]
+Meta_GMMs<-t(Meta_GMMs)
+
+# check correct ordering
+all(rownames(metadata) == rownames(Meta_GMMs))
+## [1] TRUE
+all(order(rownames(metadata)) == order(rownames(Meta_GMMs)))
+## [1] TRUE
+Meta_GMMs<- as.data.frame(Meta_GMMs)
+
+Metadec_GMMs <- MetaDeconfound(featureMat = as.data.frame(Meta_GMMs),
+                              metaMat = as.data.frame(metadata), nnodes = 3, randomVar = c("Volunteer", "Study"))
+
+#Plot
+Output_heatmap <- BuildHeatmap(Metadec_GMMs)
+plot(Output_heatmap)
+
+raw_p_Cognition_tax <- Metadec_GMMs[1]
+corr_p_Cognition_tax <- Metadec_GMMs[2]
+effect_size_Cognition_tax <- Metadec_GMMs[3]
+status_Cognition_tax <- Metadec_GMMs[4]
+
+saveRDS(Metadec_GMMs, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/metadeconfoundR/Metadec_GMMs.Rds")
+
+
+```
+
+# ARGs_rgi
+```{r ARGs_rgi metadeconfoundR}
+library("phyloseq"); packageVersion("phyloseq")
+library(readr)
+library(metadeconfoundR)
+library("ggplot2"); packageVersion("ggplot2")
+ARGs_rgi_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ARGs_rgi_corrected.Rds")
+ARGs_rgi_corrected<- subset_samples(ARGs_rgi_corrected, Group_cutoff_4 %in% c("R", "NR"))
+ARGs_rgi_corrected<- subset_samples(ARGs_rgi_corrected, Timepoint %in% c("T0", "T2"))
+ARGs_rgi_corrected<- subset_samples(ARGs_rgi_corrected, Longitudinal %in% c("Yes"))
+metadata<-as.data.frame(sample_data(ARGs_rgi_corrected))
+metadata<-metadata[,c("DmGenderSexID","Group_cutoff_4", "Age", "PHES", "Ammonia","IL6", "Haemoglobin", "Leukocytes", "Absolute_Neutrophils", "Absolute_Lymphocytes", "Absolute_Monocytes", "Absolute_Eosinophils", "INR", "Fibrinogen", "Urea", "Creatinine", "Total_bilirubin", "Albumin", "AST", "ALT", "GGT", "Alkaline_phosphatase", "Sodium", "Potassium", "Timepoint", "Volunteer", "Study")]
+
+metadata$Albumin[metadata$Study == "Spain"] <- metadata$Albumin[metadata$Study == "Spain"] * 10
+metadata$Neutrophils <- (metadata$Absolute_Neutrophils/metadata$Leukocytes)*100
+metadata$Lymphocytes <- (metadata$Absolute_Lymphocytes/metadata$Leukocytes)*100
+metadata$Monocytes <- (metadata$Absolute_Monocytes/metadata$Leukocytes)*100
+metadata$Eosinophils <- (metadata$Absolute_Eosinophils/metadata$Leukocytes)*100
+
+metadata1<-metadata
+
+# 0 is female 1 is male
+metadata$DmGenderSexID[metadata$DmGenderSexID == 2] <- 0
+sample_data(ARGs_rgi_corrected) <- sample_data(metadata)
+metadata<-data.frame(metadata)
+metadata <- metadata %>% mutate(Group_cutoff_4 = ifelse(Group_cutoff_4=="R",1,0))
+metadata <- metadata %>% mutate(Study = ifelse(Study=="Spain",1,0))
+
+#Names Modules
+Meta_ARGs_rgi <- as.data.frame((otu_table(ARGs_rgi_corrected)))
+long_names<-as.data.frame(tax_table(ARGs_rgi_corrected))
+long_names$Antibiotic_short <- substr(long_names$Antibiotic, 1, 25)
+
+
+# Get the matching indices of Meta_ARGs_rgi rownames in long_names rownames
+matched_indices <- match(rownames(Meta_ARGs_rgi), rownames(long_names))
+
+# Safely create new rownames by merging only matched rows
+new_rownames <- ifelse(
+  !is.na(matched_indices),
+  paste(long_names$ARO_ID[matched_indices], long_names$Antibiotic_short[matched_indices], sep = " | "),
+  rownames(Meta_ARGs_rgi)  # fallback if no match
+)
+
+# Assign new rownames
+rownames(Meta_ARGs_rgi) <- new_rownames
+
+Meta_ARGs_rgi<-t(Meta_ARGs_rgi)
+
+# check correct ordering
+all(rownames(metadata) == rownames(Meta_ARGs_rgi))
+## [1] TRUE
+all(order(rownames(metadata)) == order(rownames(Meta_ARGs_rgi)))
+## [1] TRUE
+Meta_ARGs_rgi<- as.data.frame(Meta_ARGs_rgi)
+
+Metadec_ARGs_rgi <- MetaDeconfound(featureMat = as.data.frame(Meta_ARGs_rgi),
+                               metaMat = as.data.frame(metadata), nnodes = 3, randomVar = c("Volunteer", "Study"))
+
+#Plot
+View(Metadec_ARGs_rgi)
+
+Output_heatmap <- BuildHeatmap(Metadec_ARGs_rgi)
+plot(Output_heatmap)
+
+raw_p_Cognition_tax <- Metadec_ARGs_rgi[1]
+corr_p_Cognition_tax <- Metadec_ARGs_rgi[2]
+effect_size_Cognition_tax <- Metadec_ARGs_rgi[3]
+status_Cognition_tax <- Metadec_ARGs_rgi[4]
+
+saveRDS(Metadec_ARGs_rgi, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/metadeconfoundR/Metadec_ARGs_rgi.Rds")
+
+
+```
+
+# ARGs ResF
+```{r ARGs ResF metadeconfoundR}
+library("phyloseq"); packageVersion("phyloseq")
+library(readr)
+library(metadeconfoundR)
+library("ggplot2"); packageVersion("ggplot2")
+ARGs_ResFinder <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ARGs_ResFinder.Rds")
+ARGs_ResFinder<- subset_samples(ARGs_ResFinder, Group_cutoff_4 %in% c("R", "NR"))
+ARGs_ResFinder<- subset_samples(ARGs_ResFinder, Timepoint %in% c("T0", "T2"))
+ARGs_ResFinder<- subset_samples(ARGs_ResFinder, Longitudinal %in% c("Yes"))
+metadata<-as.data.frame(sample_data(ARGs_ResFinder))
+metadata<-metadata[,c("DmGenderSexID","Group_cutoff_4", "Age", "PHES", "Ammonia","IL6", "Haemoglobin", "Leukocytes", "Absolute_Neutrophils", "Absolute_Lymphocytes", "Absolute_Monocytes", "Absolute_Eosinophils", "INR", "Fibrinogen", "Urea", "Creatinine", "Total_bilirubin", "Albumin", "AST", "ALT", "GGT", "Alkaline_phosphatase", "Sodium", "Potassium", "Timepoint", "Volunteer", "Study")]
+
+metadata$Albumin[metadata$Study == "Spain"] <- metadata$Albumin[metadata$Study == "Spain"] * 10
+metadata$Neutrophils <- (metadata$Absolute_Neutrophils/metadata$Leukocytes)*100
+metadata$Lymphocytes <- (metadata$Absolute_Lymphocytes/metadata$Leukocytes)*100
+metadata$Monocytes <- (metadata$Absolute_Monocytes/metadata$Leukocytes)*100
+metadata$Eosinophils <- (metadata$Absolute_Eosinophils/metadata$Leukocytes)*100
+
+metadata1<-metadata
+
+# 0 is female 1 is male
+metadata$DmGenderSexID[metadata$DmGenderSexID == 2] <- 0
+sample_data(ARGs_ResFinder) <- sample_data(metadata)
+metadata<-data.frame(metadata)
+metadata <- metadata %>% mutate(Group_cutoff_4 = ifelse(Group_cutoff_4=="R",1,0))
+
+#Names Modules
+Meta_ARGs_ResFinder <- as.data.frame((otu_table(ARGs_ResFinder)))
+long_names<-as.data.frame(tax_table(ARGs_ResFinder))
+
+# Get the matching indices of Meta_ARGs_ResFinder rownames in long_names rownames
+matched_indices <- match(rownames(Meta_ARGs_ResFinder), rownames(long_names))
+
+# Safely create new rownames by merging only matched rows
+new_rownames <- ifelse(
+  !is.na(matched_indices),
+  paste(long_names$`Resistance gene`[matched_indices], long_names$Phenotype[matched_indices], sep = " | "),
+  rownames(Meta_ARGs_ResFinder)  # fallback if no match
+)
+
+# Assign new rownames
+rownames(Meta_ARGs_ResFinder) <- new_rownames
+Meta_ARGs_ResFinder<-t(Meta_ARGs_ResFinder)
+
+# check correct ordering
+all(rownames(metadata) == rownames(Meta_ARGs_ResFinder))
+## [1] TRUE
+all(order(rownames(metadata)) == order(rownames(Meta_ARGs_ResFinder)))
+## [1] TRUE
+Meta_ARGs_ResFinder<- as.data.frame(Meta_ARGs_ResFinder)
+
+Metadec_ARGs_ResFinder <- MetaDeconfound(featureMat = as.data.frame(Meta_ARGs_ResFinder),
+                               metaMat = as.data.frame(metadata), nnodes = 3, randomVar = c("Volunteer", "Study"))
+
+#Plot
+View(Metadec_ARGs_ResFinder)
+
+Output_heatmap <- BuildHeatmap(Metadec_ARGs_ResFinder)
+plot(Output_heatmap)
+
+raw_p_Cognition_tax <- Metadec_ARGs_ResFinder[1]
+corr_p_Cognition_tax <- Metadec_ARGs_ResFinder[2]
+effect_size_Cognition_tax <- Metadec_ARGs_ResFinder[3]
+status_Cognition_tax <- Metadec_ARGs_ResFinder[4]
+
+saveRDS(Metadec_ARGs_ResFinder, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/metadeconfoundR/Metadec_ARGs_ResFinder.Rds")
+
+
+```
+
+

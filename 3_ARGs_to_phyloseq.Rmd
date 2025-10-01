@@ -411,3 +411,136 @@ saveRDS(ARGs_ResFinder, file = "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/M
 
 ```
 
+# ARGs_ok
+```{r ResFinder argNorm ARGs_ok}
+library(dplyr)
+library(readr)
+library(stringr)
+library(purrr)
+
+resfinder_dir <- "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Assembly/Resfinder_results"
+resfinder_files <- list.files(resfinder_dir, pattern = "ResFinder_results_tab_argNorm.tsv$", recursive = TRUE, full.names = TRUE)
+
+# Function to extract sample name and format columns
+read_ResFinder_results_tab <- function(file) {
+  sample <- basename(dirname(file)) # Extracts sample name from parent folder
+  resfinder_data <- read_tsv(file, skip = 1, show_col_types = FALSE) %>%
+    mutate(Sample = sample,
+           Identity = as.numeric(Identity),
+           Coverage = as.numeric(Coverage)) %>%
+    select(
+      Sample,
+      `Resistance gene`,
+      Identity,
+      `Alignment Length/Gene Length`,
+      Coverage,
+      `Position in reference`,
+      Contig,
+      `Position in contig`,
+      Phenotype,
+      `Accession no.`,
+      ARO,
+      ARO_name,
+      Cut_Off,
+      confers_resistance_to,	
+      confers_resistance_to_names,	
+      resistance_to_drug_classes,
+      resistance_to_drug_classes_names
+    )
+  return(resfinder_data)
+}
+
+# Combine all tables
+resfinder_data_Spain <- map_df(resfinder_files, read_ResFinder_results_tab)
+resfinder_data_Spain<- resfinder_data_Spain[, c("Resistance gene", "Phenotype", "ARO",
+                                                "ARO_name",
+                                                "confers_resistance_to",	
+                                                "confers_resistance_to_names",	
+                                                "resistance_to_drug_classes",
+                                                "resistance_to_drug_classes_names")]
+resfinder_data_Spain <- resfinder_data_Spain %>%
+  distinct(`Resistance gene`, .keep_all = TRUE)
+
+resfinder_dir_UK <- "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bibliography/Patel_2021_09_10/Assembly/Resfinder_results"
+resfinder_files_UK <- list.files(resfinder_dir_UK, pattern = "ResFinder_results_tab_argNorm.tsv$", recursive = TRUE, full.names = TRUE)
+
+# Function to extract sample name and format columns
+read_ResFinder_results_tab <- function(file) {
+  sample <- basename(dirname(file)) # Extracts sample name from parent folder
+  resfinder_data <- read_tsv(file,  skip = 1, show_col_types = FALSE) %>%
+    mutate(Sample = sample) %>%
+    mutate(Identity = as.numeric(Identity)) %>%
+    mutate(Coverage = as.numeric(Coverage)) %>%
+    select(
+      Sample,
+      `Resistance gene`,
+      Identity,
+      `Alignment Length/Gene Length`,
+      Coverage,
+      `Position in reference`,
+      Contig,
+      `Position in contig`,
+      Phenotype,
+      `Accession no.`,
+      ARO,
+      ARO_name,
+      Cut_Off,
+      confers_resistance_to,	
+      confers_resistance_to_names,	
+      resistance_to_drug_classes,
+      resistance_to_drug_classes_names
+    )
+  return(resfinder_data)
+}
+
+# Combine all tables
+resfinder_data_UK <- map_df(resfinder_files_UK, read_ResFinder_results_tab)
+resfinder_data_UK<- resfinder_data_UK[, c("Resistance gene", "Phenotype", "ARO",
+                                          "ARO_name",
+                                          "confers_resistance_to",	
+                                          "confers_resistance_to_names",	
+                                          "resistance_to_drug_classes",
+                                          "resistance_to_drug_classes_names")]
+resfinder_data_UK <- resfinder_data_UK %>%
+  distinct(`Resistance gene`, .keep_all = TRUE)
+
+resfinder_data<-merge(resfinder_data_Spain, resfinder_data_UK, all = TRUE)
+resfinder_data<-as.data.frame(resfinder_data)
+rownames(resfinder_data)<- resfinder_data$`Resistance gene`
+
+resfinder_data <- resfinder_data %>%
+  mutate(
+    ARO = str_replace_all(ARO, "ARO:", "ARO_"),
+    confers_resistance_to = str_replace_all(confers_resistance_to, "ARO:", "ARO_"),
+    resistance_to_drug_classes = str_replace_all(resistance_to_drug_classes, "ARO:", "ARO_")
+  )
+resfinder_data$ARO[rownames(resfinder_data) == "tetB(P)"] <- "ARO_3000195"
+resfinder_data$ARO[rownames(resfinder_data) == "tet(44)"] <- "ARO_3000556"
+resfinder_data$ARO[rownames(resfinder_data) == "Cfr(E)"] <- "ARO_3005023"
+
+
+# Extract ARO numbers
+combined_text <- c(resfinder_data$ARO, resfinder_data$confers_resistance_to, resfinder_data$resistance_to_drug_classes)
+aro_numbers_list <- str_extract_all(combined_text, "ARO_\\d+")
+unique_aro_numbers <- unique(unlist(aro_numbers_list))
+unique_aro_numbers
+
+
+ARGs_rgi<-readRDS(file = "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ARGs_rgi.Rds")
+
+#we also want to keep rifaximin-related AROs
+df<-data.frame(tax_table(ARGs_rgi))
+filtered_df <- df %>%
+  filter(str_detect(Antibiotic, regex("rifaximin|rifampin|rifampicin", ignore_case = TRUE)))
+
+rifax_AROs <- c(filtered_df$ARO_ID)
+manually_identified<-c("ARO_3003950", "ARO_3004442", "ARO_3002867", "ARO_3000499","ARO_3000795", "ARO_3003548", "ARO_3000499", "ARO_3000074", "ARO_3001216", "ARO_3002986", "ARO_3003002")
+combined_AROs <- unique(c(rifax_AROs, unique_aro_numbers, manually_identified))
+
+# Filter taxa to keep only those present in combined_AROs
+ARGs_ok <- prune_taxa(taxa_names(ARGs_rgi) %in% combined_AROs, ARGs_rgi)
+
+
+
+saveRDS(ARGs_ok, file = "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ARGs_ok.Rds")
+```

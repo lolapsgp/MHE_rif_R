@@ -158,6 +158,84 @@ saveRDS(Metadec_GMMs, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/ou
 
 ```
 
+# ARGs_ok
+```{r ARGs_ok metadeconfoundR}
+library("phyloseq"); packageVersion("phyloseq")
+library(readr)
+library(metadeconfoundR)
+library("ggplot2"); packageVersion("ggplot2")
+ARGs_ok_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ARGs_ok_corrected.Rds")
+ARGs_ok_corrected<- subset_samples(ARGs_ok_corrected, Group_cutoff_4 %in% c("R", "NR"))
+ARGs_ok_corrected<- subset_samples(ARGs_ok_corrected, Timepoint %in% c("T0", "T2"))
+ARGs_ok_corrected<- subset_samples(ARGs_ok_corrected, Longitudinal %in% c("Yes"))
+metadata<-as.data.frame(sample_data(ARGs_ok_corrected))
+metadata<-metadata[,c("DmGenderSexID","Group_cutoff_4", "Age", "PHES", "Ammonia","IL6", "Haemoglobin", "Leukocytes", "Absolute_Neutrophils", "Absolute_Lymphocytes", "Absolute_Monocytes", "Absolute_Eosinophils", "INR", "Fibrinogen", "Urea", "Creatinine", "Total_bilirubin", "Albumin", "AST", "ALT", "GGT", "Alkaline_phosphatase", "Sodium", "Potassium", "Timepoint", "Volunteer", "Study")]
+
+metadata$Albumin[metadata$Study == "Spain"] <- metadata$Albumin[metadata$Study == "Spain"] * 10
+metadata$Neutrophils <- (metadata$Absolute_Neutrophils/metadata$Leukocytes)*100
+metadata$Lymphocytes <- (metadata$Absolute_Lymphocytes/metadata$Leukocytes)*100
+metadata$Monocytes <- (metadata$Absolute_Monocytes/metadata$Leukocytes)*100
+metadata$Eosinophils <- (metadata$Absolute_Eosinophils/metadata$Leukocytes)*100
+
+metadata1<-metadata
+
+# 0 is female 1 is male
+metadata$DmGenderSexID[metadata$DmGenderSexID == 2] <- 0
+sample_data(ARGs_ok_corrected) <- sample_data(metadata)
+metadata<-data.frame(metadata)
+metadata <- metadata %>% mutate(Group_cutoff_4 = ifelse(Group_cutoff_4=="R",1,0))
+metadata <- metadata %>% mutate(Study = ifelse(Study=="Spain",1,0))
+
+#Names Modules
+Meta_ARGs_ok <- as.data.frame((otu_table(ARGs_ok_corrected)))
+long_names<-as.data.frame(tax_table(ARGs_ok_corrected))
+long_names$Antibiotic_short <- substr(long_names$Antibiotic, 1, 25)
+
+
+# Get the matching indices of Meta_ARGs_ok rownames in long_names rownames
+matched_indices <- match(rownames(Meta_ARGs_ok), rownames(long_names))
+
+# Safely create new rownames by merging only matched rows
+new_rownames <- ifelse(
+  !is.na(matched_indices),
+  paste(long_names$ARO_ID[matched_indices], long_names$Antibiotic_short[matched_indices], sep = " | "),
+  rownames(Meta_ARGs_ok)  # fallback if no match
+)
+
+# Assign new rownames
+rownames(Meta_ARGs_ok) <- new_rownames
+
+Meta_ARGs_ok<-t(Meta_ARGs_ok)
+
+# check correct ordering
+all(rownames(metadata) == rownames(Meta_ARGs_ok))
+## [1] TRUE
+all(order(rownames(metadata)) == order(rownames(Meta_ARGs_ok)))
+## [1] TRUE
+Meta_ARGs_ok<- as.data.frame(Meta_ARGs_ok)
+
+Metadec_ARGs_ok <- MetaDeconfound(featureMat = as.data.frame(Meta_ARGs_ok),
+                                   metaMat = as.data.frame(metadata), nnodes = 3, randomVar = c("Volunteer", "Study"))
+
+#Plot
+View(Metadec_ARGs_ok)
+
+Output_heatmap <- BuildHeatmap(Metadec_ARGs_ok)
+plot(Output_heatmap)
+
+raw_p_Cognition_tax <- Metadec_ARGs_ok[1]
+corr_p_Cognition_tax <- Metadec_ARGs_ok[2]
+effect_size_Cognition_tax <- Metadec_ARGs_ok[3]
+status_Cognition_tax <- Metadec_ARGs_ok[4]
+
+saveRDS(Metadec_ARGs_ok, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/metadeconfoundR/Metadec_ARGs_ok.Rds")
+
+
+```
+
+````
+
+
 # ARGs_rgi
 ```{r ARGs_rgi metadeconfoundR}
 library("phyloseq"); packageVersion("phyloseq")

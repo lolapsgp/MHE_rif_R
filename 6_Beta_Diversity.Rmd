@@ -185,6 +185,101 @@ adonis2(formula = t(otu_GMMs2) ~ Group_cutoff_4 + Study + DmGenderSexID + Age,
 #  Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 ```
 
+
+
+#ARGs ok
+```{r Beta Diversity ARGs_ok}
+library("phyloseq"); packageVersion("phyloseq")
+library(readr)
+library(data.table)
+library(ggpubr)
+library(ggrepel)
+library("ggplot2"); packageVersion("ggplot2")
+ARGs_ok_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ARGs_ok_corrected.Rds")
+ARGs_ok_corrected<- subset_samples(ARGs_ok_corrected, Group_cutoff_4 %in% c("R", "NR"))
+ARGs_ok_corrected<- subset_samples(ARGs_ok_corrected, Timepoint %in% c("T0", "T2"))
+
+metadata<-as.data.frame(sample_data(ARGs_ok_corrected))
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+sample_data(ARGs_ok_corrected)<-metadata
+rm(metadata)
+
+dist = phyloseq::distance(ARGs_ok_corrected, method="euclidean")
+ordination = ordinate(ARGs_ok_corrected, method="PCoA", distance=dist)
+
+plot_ordination(ARGs_ok_corrected, ordination, color="Study") +
+  theme_classic() +
+  theme(strip.background = element_blank()) +
+  stat_ellipse(aes(group = Group_cutoff_4, fill = Group_cutoff_4, color = Group_cutoff_4), 
+               geom = "polygon", type = "norm", level = 0.68, alpha = 0.2, linetype = 3) +
+  geom_line(aes(group = Volunteer, color = Study)) +
+  geom_point(aes(color = Group_cutoff_4, shape = Timepoint), size = 2.5) + 
+  geom_text(aes(label = Timepoint), vjust = -1, size = 3.5) +
+  scale_fill_manual(values = c("NR" = "#CC79A7", "R" = "#009E73"), name = "Group cutoff 4") +
+  scale_color_manual(values = c("NR" = "#CC79A7", "R" = "#009E73", "Spain" = "#E69F00", "UK" = "#0072B2"), name = "Cohort")
+
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/BetaDiv/Beta_Div_ARGs_ok.pdf", height = 5, width = 7.5)
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/BetaDiv/Beta_Div_ARGs_ok.svg", height = 5, width = 7.5)
+#Error in loadNamespace(x) : there is no package called ‘svglite’
+
+```
+
+
+###PERMANOVA ARGs_ok
+```{r PERMANOVA ARGs_ok}
+library(vegan)
+ARGs_ok_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ARGs_ok_corrected.Rds")
+ARGs_ok_corrected<- subset_samples(ARGs_ok_corrected, Group_cutoff_4 %in% c("R", "NR"))
+
+ARGs_ok_corrected0<- subset_samples(ARGs_ok_corrected, Timepoint %in% c("T0"))
+otu_ARGs_ok0 <- abundances(ARGs_ok_corrected0)
+meta_ARGs_ok0 <- meta(ARGs_ok_corrected0)
+# PERMANOVA Bray-Curtis distance T0
+adonis2(formula = t(otu_ARGs_ok0) ~ Group_cutoff_4 + Study + DmGenderSexID + Age, 
+        data = meta_ARGs_ok0, permutations = 999, 
+        method = "euclidean", by = "margin")
+
+#Permutation test for adonis under reduced model
+#Marginal effects of terms
+#Permutation: free
+#Number of permutations: 999
+
+#adonis2(formula = t(otu_ARGs_ok0) ~ Group_cutoff_4 + Study + DmGenderSexID + Age, data = meta_ARGs_ok0, permutations = 999, method = "euclidean", by = "margin")
+#Df   SumOfSqs      R2      F Pr(>F)
+#Group_cutoff_4  1 4.6597e+11 0.18918 1.8178  0.144
+#Study           1 1.1397e+11 0.04627 0.4446  0.832
+#DmGenderSexID   1 8.1349e+10 0.03303 0.3174  0.940
+#Age             1 1.7444e+11 0.07082 0.6805  0.639
+#Residual        6 1.5380e+12 0.62442              
+#Total          10 2.4631e+12 1.00000 
+
+ARGs_ok_corrected2<- subset_samples(ARGs_ok_corrected, Timepoint %in% c("T2"))
+otu_ARGs_ok2 <- abundances(ARGs_ok_corrected2)
+meta_ARGs_ok2 <- meta(ARGs_ok_corrected2)
+# PERMANOVA Bray-Curtis distance T2
+adonis2(formula = t(otu_ARGs_ok2) ~ Group_cutoff_4 + Study + DmGenderSexID + Age, 
+        data = meta_ARGs_ok2, permutations = 999, 
+        method = "euclidean", by = "margin")
+
+#Permutation test for adonis under reduced model
+#Marginal effects of terms
+#Permutation: free
+#Number of permutations: 999
+
+#adonis2(formula = t(otu_ARGs_ok2) ~ Group_cutoff_4 + Study + DmGenderSexID + Age, data = meta_ARGs_ok2, permutations = 999, method = "euclidean", by = "margin")
+#Df   SumOfSqs      R2      F Pr(>F)    
+#Group_cutoff_4  1 5.0515e+11 0.26022 3.3773  0.010 **
+#Study           1 7.2795e+10 0.03750 0.4867  0.833   
+#DmGenderSexID   1 7.1857e+10 0.03702 0.4804  0.842   
+#Age             1 1.1701e+11 0.06028 0.7823  0.568   
+#Residual        7 1.0470e+12 0.53935                 
+#Total          11 1.9412e+12 1.00000                 
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+
+
+
+```````` 
 #ARGs rgi
 ```{r Beta Diversity ARGs_rgi}
 library("phyloseq"); packageVersion("phyloseq")

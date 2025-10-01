@@ -224,6 +224,104 @@ plot_ordination(GMMs_corrected, ordination, color="Study") +
   geom_line(aes(group = Volunteer, color = Study)) +
   geom_text(aes(label = Timepoint), vjust = -1, size = 3)
 
+####################################### ARGs ok #########################################################
+ARGs_ok <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ARGs_ok.Rds")
+ARGs_ok<- subset_samples(ARGs_ok, Group_cutoff_4 %in% c("R", "NR"))
+ARGs_ok<- subset_samples(ARGs_ok, Timepoint %in% c("T0", "T2"))
+
+#PERMANOVA at T0 and at T2 to check differences by Study and Group
+ARGs_ok_long<- subset_samples(ARGs_ok, Timepoint %in% c("T0"))
+ARGs_ok_long<- subset_samples(ARGs_ok_long, Group_cutoff_4 %in% c("R", "NR"))
+otu_arg_rgi1 <- abundances(ARGs_ok_long)
+meta_arg_rgi1 <- meta(ARGs_ok_long)
+
+# PERMANOVA Bray-Curtis distance T0
+adonis2(formula = t(otu_arg_rgi1) ~ Group_cutoff_4 + Study, 
+        data = meta_arg_rgi1, permutations = 999, 
+        method = "bray", by = "margin")
+
+#PERMANOVA at T0 and at T2 to check differences by Study and Group
+ARGs_ok_long<- subset_samples(ARGs_ok, Timepoint %in% c("T2"))
+ARGs_ok_long<- subset_samples(ARGs_ok_long, Group_cutoff_4 %in% c("R", "NR"))
+otu_arg_rgi2 <- abundances(ARGs_ok_long)
+meta_arg_rgi2 <- meta(ARGs_ok_long)
+
+# PERMANOVA Bray-Curtis distance T2
+adonis2(formula = t(otu_arg_rgi2) ~ Group_cutoff_4 + Study, 
+        data = meta_arg_rgi2, permutations = 999, 
+        method = "bray", by = "margin")
+
+
+
+#Remove batch effect arg_rgionomy data and then apply clr transformation
+#ARSyN
+#Indicating group data
+otu <- data.frame(otu_table(ARGs_ok))
+metadata<-data.frame(sample_data(ARGs_ok))
+rownames(metadata) <- gsub("-", ".", rownames(metadata))
+metadata<-metadata[order(rownames(metadata)), ]
+otu<-otu[,order(colnames(otu))]
+all(rownames(metadata) == colnames(otu))
+
+library(MultiBaC)
+
+# transformation
+# Batch correction
+my_mbac <- createMbac (inputOmics = list(otu_S = otu[,metadata$Study == "Spain"],
+                                         otu_UK = otu[,metadata$Study == "UK"]),
+                       batchFactor = c("Spain", "UK"),
+                       experimentalDesign = list("Spain" = metadata$Group_cutoff_4[metadata$Study == "Spain"],
+                                                 "UK" = metadata$Group_cutoff_4[metadata$Study == "UK"]),
+                       omicNames = "otu")
+arsyn_1 <- ARSyNbac(my_mbac, modelName = "metadata", Variability = 0.95, 
+                    batchEstimation = TRUE, Interaction = FALSE, beta=2)     
+
+otu_corrected <- t(cbind(MultiAssayExperiment::assay(arsyn_1$CorrectedData$Spain),
+                         MultiAssayExperiment::assay(arsyn_1$CorrectedData$UK)))
+OTU = otu_table(t(otu_corrected), taxa_are_rows = TRUE)
+TAX = tax_table(ARGs_ok)
+SAMPLE <- sample_data(metadata)
+
+ARGs_ok_corrected <- phyloseq(OTU, TAX, SAMPLE)
+
+
+saveRDS(ARGs_ok_corrected, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ARGs_ok_corrected.Rds")
+
+
+# Euclidean distance
+#PERMANOVA at T0 and at T2 to check differences by Study and Group
+ARGs_ok_corrected_T0<- subset_samples(ARGs_ok_corrected, Timepoint %in% c("T0"))
+ARGs_ok_corrected_T0<- subset_samples(ARGs_ok_corrected_T0, Group_cutoff_4 %in% c("R", "NR"))
+otu_arg_rgi_c0 <- abundances(ARGs_ok_corrected_T0)
+meta_arg_rgi_c0 <- meta(ARGs_ok_corrected_T0)
+
+# PERMANOVA Euclidean distance T0
+adonis2(formula = t(otu_arg_rgi_c0) ~ Group_cutoff_4 + Study, 
+        data = meta_arg_rgi_c0, permutations = 999, 
+        method = "euclidean", by = "margin")
+
+#PERMANOVA at T0 and at T2 to check differences by Study and Group
+ARGs_ok_corrected_T2<- subset_samples(ARGs_ok_corrected, Timepoint %in% c("T2"))
+ARGs_ok_corrected_T2<- subset_samples(ARGs_ok_corrected_T2, Group_cutoff_4 %in% c("R", "NR"))
+otu_arg_rgi_c2 <- abundances(ARGs_ok_corrected_T2)
+meta_arg_rgi_c2 <- meta(ARGs_ok_corrected_T2)
+
+# PERMANOVA Euclidean distance T0
+adonis2(formula = t(otu_arg_rgi_c2) ~ Group_cutoff_4 + Study, 
+        data = meta_arg_rgi_c2, permutations = 999, 
+        method = "euclidean", by = "margin")
+
+dist = phyloseq::distance(ARGs_ok_corrected, method="euclidean")
+ordination = ordinate(ARGs_ok_corrected, method="PCoA", distance=dist)
+plot_ordination(ARGs_ok_corrected, ordination, color="Study") + 
+  theme_classic() +
+  theme(strip.background = element_blank()) + 
+  stat_ellipse(aes(group = Study), linetype = 3, level = 0.68) +
+  geom_line(aes(group = Volunteer, color = Study)) +
+  geom_text(aes(label = Timepoint), vjust = -1, size = 3)
+
+
+
 ####################################### ARGs rgi #########################################################
 ARGs_rgi <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ARGs_rgi.Rds")
 ARGs_rgi<- subset_samples(ARGs_rgi, Group_cutoff_4 %in% c("R", "NR"))

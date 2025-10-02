@@ -1,0 +1,151 @@
+---
+title: "9_MaAsLin2"
+output: html_document
+date: "2025-09-30"
+---
+
+```{r libraries}
+library(Maaslin2)
+```
+
+#Tax
+```{r taxa}
+ps_clr_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ps_clr_corrected.Rds")
+
+input_data <- data.frame(otu_table(ps_clr_corrected))
+input_metadata <-data.frame(sample_data(ps_clr_corrected))
+
+output_dir <- "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/MaAsLin2/Taxa_all"
+
+options(bitmapType = "cairo")
+fit_data <- Maaslin2(
+    input_data, input_metadata, output_dir,
+    fixed_effects = c('Age', 'Group_cutoff_4','DmGenderSexID', 'Ammonia', 'IL6', 'Study'),
+    random_effects = c('Study', 'Volunteer'),
+    reference=c("Group_cutoff_4,NR"),
+    standardize = FALSE, cores=1)
+
+ps_T0<- subset_samples(ps_clr_corrected, Timepoint %in% c("T0"))
+input_data_T0 <- data.frame(otu_table(ps_T0))
+input_metadata_T0 <-data.frame(sample_data(ps_T0))
+
+output_dir_t0 <- "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/MaAsLin2/Taxa_Timepoint_0"
+
+options(bitmapType = "cairo")
+fit_data <- Maaslin2(
+  input_data_T0, input_metadata_T0, output_dir_t0,
+  fixed_effects = c('Age', 'Group_cutoff_4','DmGenderSexID', 'Ammonia', 'IL6', 'Study'),
+  random_effects = c('Study'),
+  reference=c("Group_cutoff_4,NR"),
+  standardize = FALSE, cores=1)
+
+ps_T2<- subset_samples(ps_clr_corrected, Timepoint %in% c("T2"))
+input_data_T2 <- data.frame(otu_table(ps_T2))
+input_metadata_T2 <-data.frame(sample_data(ps_T2))
+
+output_dir_t2 <- "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/MaAsLin2/Taxa_Timepoint_2"
+
+options(bitmapType = "cairo")
+fit_data <- Maaslin2(
+  input_data_T2, input_metadata_T2, output_dir_t2,
+  fixed_effects = c('Age', 'Group_cutoff_4','DmGenderSexID', 'Ammonia', 'IL6', 'Study'),
+  random_effects = c('Study'),
+  reference=c("Group_cutoff_4,NR"),
+  standardize = FALSE, cores=1)
+
+```
+
+#GMMs
+```{r GMMs}
+GMMs_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/GMMs_corrected.Rds")
+
+input_data <- data.frame(otu_table(GMMs_corrected))
+input_metadata <-data.frame(sample_data(GMMs_corrected))
+
+output_dir <- "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/MaAsLin2/GMMs_all"
+
+options(bitmapType = "cairo")
+fit_data <- Maaslin2(
+  input_data, input_metadata, output_dir,
+  fixed_effects = c('Age', 'Group_cutoff_4','DmGenderSexID', 'Ammonia', 'IL6', 'Study'),
+  random_effects = c('Study', 'Volunteer'),
+  reference=c("Group_cutoff_4,NR"),
+  standardize = FALSE, cores=1)
+
+ps_T0<- subset_samples(GMMs_corrected, Timepoint %in% c("T0"))
+input_data_T0 <- data.frame(otu_table(ps_T0))
+input_metadata_T0 <-data.frame(sample_data(ps_T0))
+
+output_dir_t0 <- "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/MaAsLin2/GMMs_Timepoint_0"
+
+options(bitmapType = "cairo")
+fit_data <- Maaslin2(
+  input_data_T0, input_metadata_T0, output_dir_t0,
+  fixed_effects = c('Age', 'Group_cutoff_4','DmGenderSexID', 'Ammonia', 'IL6', 'Study'),
+  random_effects = c('Study'),
+  reference=c("Group_cutoff_4,NR"),
+  standardize = FALSE, cores=1)
+
+ps_T2<- subset_samples(GMMs_corrected, Timepoint %in% c("T2"))
+input_data_T2 <- data.frame(otu_table(ps_T2))
+input_metadata_T2 <-data.frame(sample_data(ps_T2))
+
+output_dir_t2 <- "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/MaAsLin2/GMMs_Timepoint_2"
+
+options(bitmapType = "cairo")
+fit_data <- Maaslin2(
+  input_data_T2, input_metadata_T2, output_dir_t2,
+  fixed_effects = c('Age', 'Group_cutoff_4','DmGenderSexID', 'Ammonia', 'IL6', 'Study'),
+  random_effects = c('Study'),
+  reference=c("Group_cutoff_4,NR"),
+  standardize = FALSE, cores=1)
+
+```
+
+
+#ARGs
+```{r ARGs}
+ARGs_ok_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ARGs_ok_corrected.Rds")
+
+input_data <- data.frame(otu_table(ARGs_ok_corrected))
+input_metadata <-data.frame(sample_data(ARGs_ok_corrected))
+
+output_dir <- "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/MaAsLin2/ARGs_ok_all"
+
+options(bitmapType = "cairo")
+fit_data <- Maaslin2(
+  input_data, input_metadata, output_dir,
+  fixed_effects = c('Age', 'Group_cutoff_4','DmGenderSexID', 'Ammonia', 'IL6', 'Study'),
+  random_effects = c('Study', 'Volunteer'),
+  reference=c("Group_cutoff_4,NR"),
+  standardize = FALSE, cores=1)
+
+ps_T0<- subset_samples(ARGs_ok_corrected, Timepoint %in% c("T0"))
+input_data_T0 <- data.frame(otu_table(ps_T0))
+input_metadata_T0 <-data.frame(sample_data(ps_T0))
+
+output_dir_t0 <- "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/MaAsLin2/ARGs_ok_Timepoint_0"
+
+options(bitmapType = "cairo")
+fit_data <- Maaslin2(
+  input_data_T0, input_metadata_T0, output_dir_t0,
+  fixed_effects = c('Age', 'Group_cutoff_4','DmGenderSexID', 'Ammonia', 'IL6', 'Study'),
+  random_effects = c('Study'),
+  reference=c("Group_cutoff_4,NR"),
+  standardize = FALSE, cores=1)
+
+ps_T2<- subset_samples(ARGs_ok_corrected, Timepoint %in% c("T2"))
+input_data_T2 <- data.frame(otu_table(ps_T2))
+input_metadata_T2 <-data.frame(sample_data(ps_T2))
+
+output_dir_t2 <- "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/MaAsLin2/ARGs_ok_Timepoint_2"
+
+options(bitmapType = "cairo")
+fit_data <- Maaslin2(
+  input_data_T2, input_metadata_T2, output_dir_t2,
+  fixed_effects = c('Age', 'Group_cutoff_4','DmGenderSexID', 'Ammonia', 'IL6', 'Study'),
+  random_effects = c('Study'),
+  reference=c("Group_cutoff_4,NR"),
+  standardize = FALSE, cores=1)
+
+```

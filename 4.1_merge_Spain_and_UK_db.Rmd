@@ -305,6 +305,24 @@ ps_filtered_UK <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuen
 sample_data(ps_filtered_Spain)<-data
 sample_data(ps_filtered_UK)<-metadata_UK
 ps_merged_filtered <- merge_phyloseq(ps_filtered_Spain, ps_filtered_UK)
+
+#Adjust metadata UK and Spain
+metadata<-data.frame(sample_data(ps_merged_filtered)) 
+metadata$Age <- as.numeric(metadata$Age)
+metadata$Total_bilirubin <- as.numeric(metadata$Total_bilirubin)
+metadata$Neutrophils <- (metadata$Absolute_Neutrophils/metadata$Leukocytes)*100
+metadata$Lymphocytes <- (metadata$Absolute_Lymphocytes/metadata$Leukocytes)*100
+metadata$Monocytes <- (metadata$Absolute_Monocytes/metadata$Leukocytes)*100
+metadata$Eosinophils <- (metadata$Absolute_Eosinophils/metadata$Leukocytes)*100
+metadata<-metadata%>%
+  mutate(Fibrinogen = if_else(Study == "Spain", Fibrinogen / 100, Fibrinogen))%>%
+  mutate(Creatinine = if_else(Study == "UK", Creatinine / 100, Creatinine))%>%
+  mutate(Urea = if_else(Study == "Spain", Urea / 10, Urea))%>%
+  mutate(Total_bilirubin = if_else(Study == "UK", Total_bilirubin / 10, Total_bilirubin))%>%
+  mutate(Haemoglobin = if_else(Study == "UK", Haemoglobin / 10, Haemoglobin))%>%
+  mutate(Albumin = if_else(Study == "UK", Albumin / 10, Albumin))
+sample_data(ps_merged_filtered)<-metadata
+
 saveRDS(ps_merged_filtered, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ps_merged_filtered.Rds")
 
 
@@ -313,6 +331,24 @@ GMMs_UK <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bib
 sample_data(GMMs_ngless)<-data
 sample_data(GMMs_UK)<-metadata_UK
 GMMs_merged <- merge_phyloseq(GMMs_ngless, GMMs_UK)
+
+#Adjust metadata UK and Spain
+metadata<-data.frame(sample_data(GMMs_merged)) 
+metadata$Age <- as.numeric(metadata$Age)
+metadata$Total_bilirubin <- as.numeric(metadata$Total_bilirubin)
+metadata$Neutrophils <- (metadata$Absolute_Neutrophils/metadata$Leukocytes)*100
+metadata$Lymphocytes <- (metadata$Absolute_Lymphocytes/metadata$Leukocytes)*100
+metadata$Monocytes <- (metadata$Absolute_Monocytes/metadata$Leukocytes)*100
+metadata$Eosinophils <- (metadata$Absolute_Eosinophils/metadata$Leukocytes)*100
+metadata<-metadata%>%
+  mutate(Fibrinogen = if_else(Study == "Spain", Fibrinogen / 100, Fibrinogen))%>%
+  mutate(Creatinine = if_else(Study == "UK", Creatinine / 100, Creatinine))%>%
+  mutate(Urea = if_else(Study == "Spain", Urea / 10, Urea))%>%
+  mutate(Total_bilirubin = if_else(Study == "UK", Total_bilirubin / 10, Total_bilirubin))%>%
+  mutate(Haemoglobin = if_else(Study == "UK", Haemoglobin / 10, Haemoglobin))%>%
+  mutate(Albumin = if_else(Study == "UK", Albumin / 10, Albumin))
+sample_data(GMMs_merged)<-metadata
+
 saveRDS(GMMs_merged, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/GMMs_merged.Rds")
 
 ```

@@ -1,0 +1,164 @@
+---
+title: "4_Alpha_Div_and_barplots"
+output: html_document
+date: "2025-09-02"
+---
+```{r libraries and objects}
+library("phyloseq"); packageVersion("phyloseq")
+library(readr)
+library(data.table)
+library(ggpubr)
+library(ggrepel)
+library("ggplot2"); packageVersion("ggplot2")
+ps_raw<- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ps_merged_raw_met.Rds")
+# Remove Volunteer with less than 1 read from phyloseq object
+ps_0 <- prune_taxa(taxa_sums(ps_raw) > 0, ps_raw)
+ps_0
+ps_0<- subset_samples(ps_0, Group_cutoff_4 %in% c("R", "NR"))
+ps_0<- subset_samples(ps_0, Timepoint %in% c("T0", "T2"))
+```
+
+#Taxonomy
+
+Alpha-diversity is calculated on the raw data, here data_otu or data_phylo if you are using phyloseq.
+It is important to not use filtered data because many richness estimates are modeled on singletons and doubletons in the occurrence table. So, you need to leave them in the dataset if you want a meaningful estimate.
+Moreover, we usually not using normalized data because we want to assess the diversity on the raw data and we are not comparing Volunteer to each other but only assessing diversity within each sample.
+
+```{r Counts}
+reads_per_sample <- as.matrix(rowSums(t(as.data.frame(otu_table(ps_0)))))
+reads_per_sample 
+```
+
+```{r Alpha Diversity}
+
+library(ggsignif)
+#Shannon
+Shannon<-phyloseq::estimate_richness(ps_0, measures = "Shannon")
+metadata<- data.frame(sample_data(ps_0)) 
+Shannon$Timepoint<-metadata$Timepoint
+Shannon$Group_cutoff_4<-metadata$Group_cutoff_4
+Shannon$Volunteer<-metadata$Volunteer
+Shannon$Study<-metadata$Study
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+Shannon$GroupTime <-metadata$GroupTime 
+ggplot(Shannon, aes(x = GroupTime, y = Shannon)) +
+    geom_boxplot(aes(fill = Group_cutoff_4), position = position_dodge(width = 0.8), alpha = 0.25) +
+    geom_jitter(aes(color = Study), alpha =1,
+                position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 2.5) +
+    scale_fill_manual(values = c("NR" = "#CC79A7", "R" = "#009E73"), name = "Group cutoff 4") +
+    scale_color_manual(values = c("Spain" = "#E69F00", "UK" = "#0072B2"), name = "Cohort") +
+    theme_minimal() +
+    labs(x = "Group cutoff 4 and Timepoint", y = "Shannon Index")
+
+
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Alpha_Div_all_met.pdf", height = 5, width = 7.5)
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Alpha_Div_all.svg", height = 5, width = 7.5)
+#Error in loadNamespace(x) : there is no package called ‘svglite’
+
+```
+
+
+```{r comaprisons for significance}
+# Perform t-tests for the specific pairs
+t1 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0"],
+             Shannon$Shannon[Shannon$GroupTime == "NR_T2"])
+t2 <- t.test(Shannon$Shannon[Shannon$GroupTime == "R_T0"],
+             Shannon$Shannon[Shannon$GroupTime == "R_T2"])
+t3<-t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0" & Shannon$Study == "Spain"],
+       Shannon$Shannon[Shannon$GroupTime == "NR_T0" & Shannon$Study == "UK"])
+t4<-t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T2" & Shannon$Study == "Spain"],
+       Shannon$Shannon[Shannon$GroupTime == "NR_T2" & Shannon$Study == "UK"])
+t5<-t.test(Shannon$Shannon[Shannon$GroupTime == "R_T0" & Shannon$Study == "Spain"],
+       Shannon$Shannon[Shannon$GroupTime == "R_T0" & Shannon$Study == "UK"])
+t6<-t.test(Shannon$Shannon[Shannon$GroupTime == "R_T2" & Shannon$Study == "Spain"],
+       Shannon$Shannon[Shannon$GroupTime == "R_T2" & Shannon$Study == "UK"])
+t7 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0"],
+             Shannon$Shannon[Shannon$GroupTime == "R_T0"])
+t8 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T2"],
+             Shannon$Shannon[Shannon$GroupTime == "R_T2"])
+
+# Combine results into a data frame for p-value adjustment
+test_results_Sannon <- data.frame(
+    comparison = c("NR_T0 vs NR_T2", "R_T0 vs R_T2", "NR_T0 Spain vs NR_T0 UK", "NR_T2 Spain vs NR_T2 UK", "R_T0 Spain vs R_T0 UK", "R_T2 Spain vs R_T2 UK", "NR_T0 vs R_T0", "NR_T2 vs R_T2"),
+    p_value = c(t1$p.value, t2$p.value, t3$p.value, t4$p.value, t5$p.value, t6$p.value, t7$p.value, t8$p.value)
+)
+
+# Adjust p-values using BH method
+test_results_Sannon$p_adj <- p.adjust(test_results$p_value, method = "BH")
+test_results_Sannon
+
+#> test_results_Shannon
+#               comparison   p_value     p_adj
+#1          NR_T0 vs NR_T2 0.5888052 0.7033105
+#2            R_T0 vs R_T2 0.6153967 0.7033105
+#3 NR_T0 Spain vs NR_T0 UK 0.2073652 0.6761763
+#4 NR_T2 Spain vs NR_T2 UK 0.4920921 0.7033105
+#5   R_T0 Spain vs R_T0 UK 0.3180633 0.6761763
+#6   R_T2 Spain vs R_T2 UK 0.3380881 0.6761763
+#7           NR_T0 vs R_T0 0.1841067 0.6761763
+#8           NR_T2 vs R_T2 0.8248432 0.8248432
+
+```
+
+###Barplots
+```{r barplots}
+ps_merged_filtered_met <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ps_merged_filtered_met.Rds")
+# Load required libraries
+library(phyloseq)
+library(ggplot2)
+library(RColorBrewer)
+
+ps_merged_filtered<- subset_samples(ps_merged_filtered_met, Group_cutoff_4 %in% c("R", "NR"))
+ps_merged_filtered<- subset_samples(ps_merged_filtered, Timepoint %in% c("T0", "T2"))
+metadata<-data.frame(sample_data(ps_merged_filtered))
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+sample_data(ps_merged_filtered)<-metadata
+
+# Agglomerate at Phylum level
+ps_phylum <- tax_glom(ps_merged_filtered, taxrank = "Phylum")
+ps_phylum_100 <- transform_sample_counts(ps_phylum, function(x) 100 * x / sum(x))
+
+
+# Melt to long format
+df_long <- psmelt(ps_phylum_100)
+
+# Optional: Tidy Phylum names (e.g., replace NAs or simplify)
+df_long$Phylum <- as.character(df_long$Phylum)
+df_long$Phylum[is.na(df_long$Phylum)] <- "Unclassified"
+
+# Set order of phyla by abundance (optional)
+top_phyla <- names(sort(tapply(df_long$Abundance, df_long$Phylum, sum), decreasing=TRUE))
+df_long$Phylum <- factor(df_long$Phylum, levels = top_phyla)
+
+df_summary <- df_long %>%
+    group_by(GroupTime, Phylum) %>%
+    summarise(Abundance = mean(Abundance), .groups = "drop")
+
+
+# Optional: reorder phyla
+top_phyla <- names(sort(tapply(df_summary$Abundance, df_summary$Phylum, sum), decreasing = TRUE))
+df_summary$Phylum <- factor(df_summary$Phylum, levels = top_phyla)
+
+# Plot
+color_palette <- c(
+    "Bacteroidota" = "#56B4E9",    # dark blue
+    "Firmicutes" = "#0072B2",     # light blue 
+    "Proteobacteria" = "#F0E442",    # yellow 
+    "Actinobacteria" = "#CC79A7",    # pink
+    "Bacillota" = "#D55E00",    # dark orange 
+    "Tenericutes" = "#E69F00",        # orange 
+    "Verrucomicrobia" = "darkolivegreen3",    # green
+    "Spirochaetes" = "#009E73"       # grey
+)
+
+
+ggplot(df_summary, aes(x = GroupTime, y = Abundance, fill = Phylum)) +
+    geom_bar(stat = "identity", position = "stack", alpha = 0.6) +
+    scale_fill_manual(values = color_palette) +
+    theme_classic(base_size = 14) +
+    labs(x = "Group", y = "Relative Abundance (%)", fill = "Phylum") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    ylim(0, 100)
+
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Barplots_tax_met.pdf", height = 5, width = 4)
+```

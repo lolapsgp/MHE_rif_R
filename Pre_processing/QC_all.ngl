@@ -1,0 +1,22 @@
+#QC
+#Try one sample in Terminal
+ngless "1.5"
+import "parallel" version "1.1"
+import "mocat" version "2.0.1"
+input = run_for_all_samples(load_sample_list('files.yaml'))
+input = preprocess(input, keep_singles=False) using |read|:
+    read = substrim(read, min_quality=25)
+    if len(read) < 45:
+         discard
+
+#Filter against the human genome
+mapped = map(input, fafile='/fast/AG_Forslund/shared/references/HG38.p14_progenomes3masked.fa') 
+mapped = select(mapped) using |mr|:
+    mr = mr.filter(min_match_size=45, min_identity_pc=90, action={unmatch})
+    if mr.flag({mapped}):
+     discard
+
+filtered_reads = as_reads(mapped)
+
+write(filtered_reads, ofile='outputs' </> input.name() + 'filtered.fq.gz')
+

@@ -1,0 +1,233 @@
+---
+title: "1_preprocessing_Patel"
+author: "Lola Giner Perez"
+date: "8/6/2024"
+output: html_document
+---
+```{r libraries}
+library(phyloseq)
+library(decontam)
+library(tidyverse)
+library(DT)
+library(ggplot2); packageVersion("ggplot2")
+```
+
+#Identify Contaminants - Frequency
+```{r Phyloseq}
+ps_raw_Patel <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bibliography/Patel_analysis/outputs/ps_raw_Patel.Rds") 
+```
+
+We have no negative control or DNA quantification , we cannot use decontam method.
+
+#Data exploration
+```{r Rarefaction curve}
+library(readr)
+library(data.table)
+ps_raw_Patel<- subset_samples(ps_raw_Patel, Group %in% c("RIFAXIMIN"))
+#Rarefaction curve
+library(vegan)
+S <- specnumber(as.data.frame(t(otu_table(ps_raw_Patel)))) # observed number of species
+(raremax <- min(rowSums(as.data.frame(t(otu_table(ps_raw_Patel))))))
+Srare <- rarefy(t(as.data.frame(otu_table(ps_raw_Patel))), raremax)
+plot(S, Srare, xlab = "Observed No. of Species", ylab = "Rarefied No. of Species")
+abline(0, 1)
+pdf("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/Patel_analysis/outputs/Figures/raref_curve.pdf")
+rarecurve(as.data.frame(t(otu_table(ps_raw_Patel))), step = 20, sample = raremax, col = "black", cex = 0.6)
+dev.off()
+```
+
+```{r exploration of the data}
+sdt = data.table(as(sample_data(ps_raw_Patel), "data.frame"),
+                 TotalReads = sample_sums(ps_raw_Patel), keep.rownames = TRUE)
+pSeqDepth = ggplot(sdt, aes(TotalReads)) + geom_histogram() + ggtitle("Sequencing Depth")
+pSeqDepth
+pSeqDepth + facet_wrap(~Group_cutoff_4)
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/Patel_analysis/outputs/Figures/explore_data1.pdf")
+```
+
+###Exploration
+
+```{r more exploration}
+tdt = data.table(tax_table(ps_raw_Patel),
+                 TotalCounts = taxa_sums(ps_raw_Patel),
+                 OTU = taxa_names(ps_raw_Patel))
+ggplot(tdt, aes(TotalCounts)) + 
+    geom_histogram() + 
+    ggtitle("Histogram of Total Counts")
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/Patel_analysis/outputs/Figures/explore_data2.pdf")
+# How many singletons?
+tdt[(TotalCounts <= 0), .N]
+tdt[(TotalCounts <= 1), .N]
+# None. This data has been filtered already. 
+# How many doubletons?
+tdt[(TotalCounts <= 2), .N]
+
+#Filtering Threshold plot
+# taxa cumulative sum
+taxcumsum = tdt[, .N, by = TotalCounts]
+setkey(taxcumsum, TotalCounts)
+taxcumsum[, CumSum := cumsum(N)]
+# Define the plot
+pCumSum = ggplot(taxcumsum, aes(TotalCounts, CumSum)) + 
+    geom_point() +
+    xlab("Filtering Threshold, Minimum Total Counts") +
+    ylab("OTUs Filtered") +
+    ggtitle("OTUs that would be filtered vs. the minimum count threshold")
+pCumSum
+#Zoom in
+pCumSum + xlim(0, 100)
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/Patel_analysis/outputs/Figures/explore_data3.pdf")
+```
+
+#Rarefaction1
+```{r rarefaction}
+# keep result reproductive
+set.seed(321)
+ps_rarefied_Patel = rarefy_even_depth(ps_raw_Patel, rngseed=1, replace=F)
+ps_rarefied_Patel
+saveRDS(ps_rarefied_Patel, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bibliography/Patel_analysis/outputs/ps_rarefied_Patel.Rds")
+```
+
+
+#Taxa filtering: Remove low prevalent taxa
+###For AphaDiv (keeping singletons)
+It is important to not use filtered data because many richness estimates are modeled on singletons and doubletons in the occurrence table. So, you need to leave them in the dataset if you want a meaningful estimate.
+Moreover, we usually not using normalized data because we want to assess the diversity on the raw data and we are not comparing samples to each other but only assessing diversity within each sample.
+```{r ps_0}
+# Remove samples with less than MINREADS from phyloseq object
+ps_0 <- prune_taxa(taxa_sums(ps_raw_Patel) > 0, ps_raw_Patel)
+# merge all taxa that are detected rare
+total_samples <- phyloseq::nsamples(ps_0)
+ps_0
+saveRDS(ps_0, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bibliography/Patel_analysis/outputs/ps_0.Rds")
+```
+
+###For all the other tests
+```{r tree plot}
+library(microbiome)
+
+##Create a prevalence dataframe 
+Prevdf<- apply(X = otu_table(ps_raw_Patel),
+               MARGIN = 1,
+               FUN = function(x){sum(x > 0)})
+
+##Add taxonomy and total read counts to this data.frame
+Prevdf<- data.frame(Prevalence = Prevdf,
+                    TotalAbundance = taxa_sums(ps_raw_Patel),
+                    tax_table(ps_raw_Patel))
+
+plyr::ddply(Prevdf, "Phylum", function(df1){
+  data.frame(mean_prevalence=mean(df1$Prevalence),total_abundance=sum(df1$TotalAbundance,na.rm = T),stringsAsFactors = F)
+})
+
+ggplot(Prevdf, aes(TotalAbundance, Prevalence / nsamples(ps_raw_Patel),color=Phylum)) +
+  geom_hline(yintercept = 0.1, alpha = 2, linetype = 2) + geom_point(size = 2, alpha = 0.7) +
+  scale_x_log10() +  xlab("Log 10 Total Reads") + ylab("Prevalence [Prop. of Samples]") +
+  theme_bw()+
+  facet_wrap(~Phylum) + theme(legend.position="none")
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/Patel_analysis/outputs/Figures/filter_data1.pdf")
+
+#Remove low prevalent ASVs (This data is used for differential abundance analysis)
+##Remove ASVs that do not show more than 5 times 
+wh0 <- genefilter_sample(ps_raw_Patel, filterfun_sample(function(x) x > 5), A=0.01*nsamples(ps_raw_Patel))
+
+#Remove ASVs not present in at least 3 patients
+sample_data <- sample_data(ps_raw_Patel)
+sample_data$Volunteer <- as.factor(sample_data$Volunteer)
+
+# Create a logical vector for motus present in at least 6 volunteers
+asv_volunteer_filter <- apply(otu_table(ps_raw_Patel), 1, function(asv_counts) {
+  # Find which volunteers have non-zero counts for this motu
+  volunteers_with_asv <- unique(sample_data$Volunteer[asv_counts > 0])
+  # Check if motu is present in at least 6 volunteers (30 %)
+  length(volunteers_with_asv) >= 6
+})
+
+# Combine both filters
+combined_filter <- wh0 & asv_volunteer_filter #Removing low prev taxa by % and if not present in at least 6/19 (31%) volunteers
+
+ps_filtered <- prune_taxa(combined_filter, ps_raw_Patel)
+
+# Remove samples with less than 20 species
+ps_filtered <- prune_samples(colSums(otu_table(ps_filtered)) >= 20, ps_filtered)
+
+pdf("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/Patel_analysis/outputs/Figures/filter_data2.pdf")
+hist(readcount(ps_filtered))
+dev.off()
+saveRDS(ps_filtered, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bibliography/Patel_analysis/outputs/ps_filtered.Rds")
+
+
+#Apply same filters to rarefied
+#Remove low prevalent ASVs (This data is used for differential abundance analysis)
+##Remove ASVs that do not show more than 5 times 
+wh0 <- genefilter_sample(ps_rarefied_Patel, filterfun_sample(function(x) x > 5), A=0.01*nsamples(ps_raw_Patel))
+
+#Remove ASVs not present in at least 3 patients
+sample_data <- sample_data(ps_rarefied_Patel)
+sample_data$Volunteer <- as.factor(sample_data$Volunteer)
+
+# Create a logical vector for motus present in at least 3 volunteers
+asv_volunteer_filter <- apply(otu_table(ps_rarefied_Patel), 1, function(asv_counts) {
+  # Find which volunteers have non-zero counts for this motu
+  volunteers_with_asv <- unique(sample_data$Volunteer[asv_counts > 0])
+  # Check if motu is present in at least 6 volunteers
+  length(volunteers_with_asv) >= 6
+})
+
+# Combine both filters
+combined_filter <- wh0 & asv_volunteer_filter #Removing low prev taxa by % and if not present in at least 6/19 (31%) volunteers
+
+ps_rarefied_Patel_filtered <- prune_taxa(combined_filter, ps_rarefied_Patel)
+
+# Remove samples with less than 20 species
+ps_rarefied_Patel_filtered <- prune_samples(colSums(otu_table(ps_rarefied_Patel_filtered)) >= 20, ps_rarefied_Patel_filtered)
+
+ps_rarefied_Patel_filtered
+pdf("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/Patel_analysis/outputs/Figures/filter_data_raref.pdf")
+hist(readcount(ps_rarefied_Patel_filtered))
+dev.off()
+saveRDS(ps_rarefied_Patel_filtered, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bibliography/Patel_analysis/outputs/ps_rarefied_Patel_filtered.Rds")
+
+```
+
+#Data transformation for Beta Div
+```{r rarefaction}
+ps_comp_Patel<- microbiome::transform(ps_filtered, "compositional")
+saveRDS(ps_comp_Patel, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bibliography/Patel_analysis/outputs/ps_comp_Patel.Rds")
+
+ps_clr_Patel<- microbiome::transform(ps_filtered, "clr")
+saveRDS(ps_clr_Patel, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bibliography/Patel_analysis/outputs/ps_clr_Patel.Rds")
+
+ps_comp_raref_Patel<- microbiome::transform(ps_rarefied_Patel_filtered, "compositional")
+saveRDS(ps_comp_raref_Patel, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bibliography/Patel_analysis/outputs/ps_comp_raref_Patel.Rds")
+
+ps_clr_raref_Patel<- microbiome::transform(ps_rarefied_Patel_filtered, "clr")
+saveRDS(ps_clr_raref_Patel, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bibliography/Patel_analysis/outputs/ps_clr_raref_Patel.Rds")
+```
+
+
+```{r Rarefaction curve}
+library(readr)
+library(data.table)
+
+#Rarefaction curve
+library(vegan)
+S <- specnumber(as.data.frame(t(otu_table(ps_filtered)))) # observed number of species
+(raremax <- min(rowSums(as.data.frame(t(otu_table(ps_filtered))))))
+Srare <- rarefy(t(as.data.frame(otu_table(ps_filtered))), raremax)
+plot(S, Srare, xlab = "Observed No. of Species", ylab = "Rarefied No. of Species")
+abline(0, 1)
+pdf("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/Patel_analysis/outputs/Figures/raref_curve_filtered.pdf")
+rarecurve(as.data.frame(t(otu_table(ps_filtered))), step = 20, sample = raremax, col = "black", cex = 0.6)
+dev.off()
+
+S <- specnumber(as.data.frame(t(otu_table(ps_rarefied_Patel_filtered)))) # observed number of species
+(raremax <- min(rowSums(as.data.frame(t(otu_table(ps_rarefied_Patel_filtered))))))
+Srare <- rarefy(t(as.data.frame(otu_table(ps_rarefied_Patel_filtered))), raremax)
+plot(S, Srare, xlab = "Observed No. of Species", ylab = "Rarefied No. of Species")
+abline(0, 1)
+pdf("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/Patel_analysis/outputs/Figures/raref_curve_filtered_rarefied.pdf")
+rarecurve(as.data.frame(t(otu_table(ps_rarefied_Patel_filtered))), step = 20, sample = raremax, col = "black", cex = 0.6)
+dev.off()
+
+```

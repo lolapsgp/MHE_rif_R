@@ -1,0 +1,189 @@
+---
+title: "Run_before_rgi_bowtie_index"
+output: html_document
+date: "2025-09-03"
+---
+
+
+```{r gogogo let's see}
+library(tidyverse)
+library(phyloseq)
+# List Spain RGI output files
+rgi_files <- list.files("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Assembly/rgi_outputs/", pattern = "rgi.txt$", full.names = TRUE)
+
+# Extract sample names
+sample_names <- tools::file_path_sans_ext(basename(rgi_files)) %>% str_remove("rgi")
+
+# Define consistent column types for RGI output
+rgi_col_types <- cols(
+  ORF_ID = col_character(),
+  Contig = col_character(),
+  Start = col_double(),
+  Stop = col_double(),
+  Orientation = col_character(),
+  Cut_Off = col_character(),
+  Pass_Bitscore = col_character(),
+  Best_Hit_Bitscore = col_double(),
+  Percentage  = col_double(),
+  Best_Hit_ARO = col_character(),
+  Best_Identities = col_character(),
+  ARO = col_character(),
+  Model_type = col_character(),
+  SNPs_in_Best_Hit_ARO = col_character(),
+  Other_SNPs = col_character(),
+  ARO_category = col_character(),
+  `Drug Class` = col_character(),
+  `Resistance Mechanism` = col_character(),
+  `AMR Gene Family` = col_character(),
+  Predicted_DNA = col_character(),
+  Predicted_Protein = col_character(),
+  CARD_Protein_Sequence = col_character(),
+  `Length of Reference Sequence`= col_double(),
+  `Percentage Length of Reference Sequence` = col_double(),
+  Model_ID= col_character(),
+  Nudged= col_character(),
+  Note= col_character(),
+  Hit_Start= col_character(),
+  Hit_End= col_character(),
+  Antibiotic= col_character(),
+  ID = col_character()
+)
+
+# Read and combine all RGI tables
+rgi_data_Spain <- map2_dfr(rgi_files, sample_names, ~ {
+  read_tsv(.x, col_types = rgi_col_types) %>%
+    mutate(Sample = .y)
+})
+
+
+```
+
+```{r UK}
+# List UK RGI output files
+rgi_files_UK <- list.files("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Secuences_bibliography/Patel_2021_09_10/Assembly/rgi_outputs/", pattern = "rgi.txt$", full.names = TRUE)
+
+# Extract sample names
+sample_names_UK <- tools::file_path_sans_ext(basename(rgi_files_UK)) %>% str_remove("rgi")
+
+# Define consistent column types for RGI output
+rgi_col_types <- cols(
+  ORF_ID = col_character(),
+  Contig = col_character(),
+  Start = col_double(),
+  Stop = col_double(),
+  Orientation = col_character(),
+  Cut_Off = col_character(),
+  Pass_Bitscore = col_character(),
+  Best_Hit_Bitscore = col_double(),
+  Percentage  = col_double(),
+  Best_Hit_ARO = col_character(),
+  Best_Identities = col_character(),
+  ARO = col_character(),
+  Model_type = col_character(),
+  SNPs_in_Best_Hit_ARO = col_character(),
+  Other_SNPs = col_character(),
+  ARO_category = col_character(),
+  `Drug Class` = col_character(),
+  `Resistance Mechanism` = col_character(),
+  `AMR Gene Family` = col_character(),
+  Predicted_DNA = col_character(),
+  Predicted_Protein = col_character(),
+  CARD_Protein_Sequence = col_character(),
+  `Length of Reference Sequence`= col_double(),
+  `Percentage Length of Reference Sequence` = col_double(),
+  Model_ID= col_character(),
+  Nudged= col_character(),
+  Note= col_character(),
+  Hit_Start= col_character(),
+  Hit_End= col_character(),
+  Antibiotic= col_character(),
+  ID = col_character()
+)
+
+# Read and combine all RGI tables
+rgi_data_UK <- map2_dfr(rgi_files_UK, sample_names_UK, ~ {
+  read_tsv(.x, col_types = rgi_col_types) %>%
+    mutate(Sample = .y)
+})
+
+
+```
+
+```{r quick eye}
+GMMs_merged <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/GMMs_merged.Rds")
+metadata<-data.frame(sample_data(GMMs_merged))
+metadata_simple <- metadata[c("SampleID", "Group_cutoff_4", "Study", "Timepoint")]
+library(dplyr)
+
+rgi_data <- bind_rows(rgi_data_Spain, rgi_data_UK)
+rgi_data$SampleID <- rgi_data$Sample
+rgi_data$Sample <- NULL
+rgi_data_all<- merge(rgi_data, metadata_simple, by = "SampleID", all.x = TRUE)
+
+#Filter by 80% identity and coverage
+rgi_data_all$Best_Identities<-as.numeric(rgi_data_all$Best_Identities)
+rgi_data_filtered <- rgi_data_all[rgi_data_all$Best_Identities > 80 & 
+                                  rgi_data_all$`Percentage Length of Reference Sequence` > 80, ]
+
+
+saveRDS(rgi_data_all, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/rgi_data_all.Rds")
+saveRDS(rgi_data_filtered, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/rgi_data_filtered.Rds")
+
+```
+
+#rgi_data_filtered --> index for counting in raw reads
+```{r rga to index}
+library(dplyr)
+library(stringr)
+
+# Clean and filter data
+df <- rgi_data_filtered %>%
+  select(SampleID, ORF_ID, ARO, Best_Hit_ARO, Predicted_DNA, Contig) %>%
+  filter(!is.na(Predicted_DNA) & Predicted_DNA != "") %>%
+  mutate(Predicted_DNA = gsub("\\s+", "", Predicted_DNA))
+
+# Create output directory
+output_dir <- "/fast/AG_Forslund/Lola/ARG_indexes_per_sample"
+dir.create(output_dir, showWarnings = FALSE)
+
+# Process each sample individually
+samples <- unique(df$SampleID)
+
+for (sample in samples) {
+  
+  # Subset data for the current sample
+  sample_df <- df %>% filter(SampleID == sample)
+  
+  # Remove duplicates based on DNA sequence
+  uniq <- sample_df %>%
+    distinct(Predicted_DNA, .keep_all = TRUE) %>%
+    mutate(
+      fasta_header = paste0(">", "ARO_", ARO, "|", "ORF_ID_", ORF_ID,  "|", Best_Hit_ARO, "|", Contig, "|", ORF_ID),
+      seq = Predicted_DNA
+    ) %>%
+    select(fasta_header, seq)
+
+  # Write to FASTA
+  fasta_path <- file.path(output_dir, paste0(sample, ".fasta"))
+  con <- file(fasta_path, "w")
+  
+  for (i in seq_len(nrow(uniq))) {
+    writeLines(uniq$fasta_header[i], con)
+    seq_chars <- strwrap(uniq$seq[i], width = 80)
+    writeLines(seq_chars, con)
+  }
+  
+  close(con)
+  cat("Wrote", fasta_path, "with", nrow(uniq), "unique sequences\n")
+}
+
+```
+
+#Run Run_mapping_ARGs_to_contigs to each dataset
+
+#Check number of RGIs per study and group
+rgi_data_filtered <- rgi_data_all %>%
+    filter(Group_cutoff_4 %in% c("R", "NR"))
+rgi_data_filtered <- rgi_data_filtered %>%
+    filter(Timepoint %in% c("T0", "T2"))
+table(rgi_data_filtered$Study, rgi_data_filtered$Group_cutoff_4)

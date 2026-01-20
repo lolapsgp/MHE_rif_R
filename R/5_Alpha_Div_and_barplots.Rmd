@@ -1,0 +1,1398 @@
+---
+title: "4_Alpha_Div_and_barplots"
+output: html_document
+date: "2025-09-02"
+---
+```{r libraries and objects}
+library("phyloseq"); packageVersion("phyloseq")
+library(readr)
+library(data.table)
+library(ggpubr)
+library(ggrepel)
+library("ggplot2"); packageVersion("ggplot2")
+ps_raw<- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ps_merged_raw.Rds")
+# Remove Volunteer with less than 1 read from phyloseq object
+ps_0 <- prune_taxa(taxa_sums(ps_raw) > 0, ps_raw)
+ps_0
+ps_0<- subset_samples(ps_0, Group_cutoff_4 %in% c("R", "NR"))
+ps_0<- subset_samples(ps_0, Timepoint %in% c("T0", "T2"))
+#target_depth = 3246, identified by  View(table(sample_sums(ps_0)))
+ps.rarefied <- rarefy_even_depth(ps_0, sample.size=3246, rngseed=1, replace=FALSE)
+```
+
+#Taxonomy
+
+Alpha-diversity is calculated on the raw data, here data_otu or data_phylo if you are using phyloseq.
+It is important to not use filtered data because many richness estimates are modeled on singletons and doubletons in the occurrence table. So, you need to leave them in the dataset if you want a meaningful estimate.
+Moreover, we usually not using normalized data because we want to assess the diversity on the raw data and we are not comparing Volunteer to each other but only assessing diversity within each sample.
+
+```{r Counts}
+reads_per_sample <- as.matrix(rowSums(t(as.data.frame(otu_table(ps_0)))))
+reads_per_sample 
+```
+
+```{r Alpha Diversity}
+
+library(ggsignif)
+#Shannon
+Shannon<-phyloseq::estimate_richness(ps_0, measures = "Shannon")
+metadata<- data.frame(sample_data(ps_0)) 
+Shannon$Timepoint<-metadata$Timepoint
+Shannon$Group_cutoff_4<-metadata$Group_cutoff_4
+Shannon$Volunteer<-metadata$Volunteer
+Shannon$Study<-metadata$Study
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+Shannon$GroupTime <-metadata$GroupTime 
+pShannon<- ggplot(Shannon, aes(x = GroupTime, y = Shannon)) +
+    geom_boxplot(aes(fill = Group_cutoff_4), position = position_dodge(width = 0.8), alpha = 0.25) +
+    geom_jitter(aes(color = Study), alpha =1,
+                position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 2.5) +
+    scale_fill_manual(values = c("NR" = "#CC79A7", "R" = "#009E73"), name = "Group cutoff 4") +
+    scale_color_manual(values = c("Spain" = "#E69F00", "UK" = "#0072B2"), name = "Cohort") +
+    theme_minimal() +
+    labs(x = "Group cutoff 4 and Timepoint", y = "Shannon Index")
+
+#Chao1
+Chao1<-phyloseq::estimate_richness(ps_0, measures = "Chao1")
+metadata<- data.frame(sample_data(ps_0)) 
+Chao1$Timepoint<-metadata$Timepoint
+Chao1$Group_cutoff_4<-metadata$Group_cutoff_4
+Chao1$Volunteer<-metadata$Volunteer
+Chao1$Study<-metadata$Study
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+Chao1$GroupTime <-metadata$GroupTime 
+pChao1<- ggplot(Chao1, aes(x = GroupTime, y = Chao1)) +
+    geom_boxplot(aes(fill = Group_cutoff_4), position = position_dodge(width = 0.8), alpha = 0.25) +
+    geom_jitter(aes(color = Study), alpha =1,
+                position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 2.5) +
+    scale_fill_manual(values = c("NR" = "#CC79A7", "R" = "#009E73"), name = "Group cutoff 4") +
+    scale_color_manual(values = c("Spain" = "#E69F00", "UK" = "#0072B2"), name = "Cohort") +
+    theme_minimal() +
+    labs(x = "Group cutoff 4 and Timepoint", y = "Chao1 Index")
+
+#Fisher
+Fisher<-phyloseq::estimate_richness(ps_0, measures = "Fisher")
+metadata<- data.frame(sample_data(ps_0))
+Fisher$Timepoint<-metadata$Timepoint
+Fisher$Group_cutoff_4<-metadata$Group_cutoff_4
+Fisher$Volunteer<-metadata$Volunteer
+Fisher$Study<-metadata$Study
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+Fisher$GroupTime <-metadata$GroupTime 
+pFisher<- ggplot(Fisher, aes(x = GroupTime, y = Fisher)) +
+    geom_boxplot(aes(fill = Group_cutoff_4), position = position_dodge(width = 0.8), alpha = 0.25) +
+    geom_jitter(aes(color = Study), alpha =1,
+                position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 2.5) +
+    scale_fill_manual(values = c("NR" = "#CC79A7", "R" = "#009E73"), name = "Group cutoff 4") +
+    scale_color_manual(values = c("Spain" = "#E69F00", "UK" = "#0072B2"), name = "Cohort") +
+    theme_minimal() +
+    labs(x = "Group cutoff 4 and Timepoint", y = "Fisher Index")
+
+
+ggarrange(pShannon, pFisher, pChao1, common.legend = TRUE, legend="bottom",nrow = 1)
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Alpha_Div_all.pdf", height = 5, width = 7.5)
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Alpha_Div_all.svg", height = 5, width = 7.5)
+#Error in loadNamespace(x) : there is no package called ‘svglite’
+
+```
+
+
+```{r comaprisons for significance}
+# Perform t-tests for the specific pairs
+t1 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0"],
+             Shannon$Shannon[Shannon$GroupTime == "NR_T2"])
+t2 <- t.test(Shannon$Shannon[Shannon$GroupTime == "R_T0"],
+             Shannon$Shannon[Shannon$GroupTime == "R_T2"])
+t3<-t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0" & Shannon$Study == "Spain"],
+       Shannon$Shannon[Shannon$GroupTime == "NR_T0" & Shannon$Study == "UK"])
+t4<-t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T2" & Shannon$Study == "Spain"],
+       Shannon$Shannon[Shannon$GroupTime == "NR_T2" & Shannon$Study == "UK"])
+t5<-t.test(Shannon$Shannon[Shannon$GroupTime == "R_T0" & Shannon$Study == "Spain"],
+       Shannon$Shannon[Shannon$GroupTime == "R_T0" & Shannon$Study == "UK"])
+t6<-t.test(Shannon$Shannon[Shannon$GroupTime == "R_T2" & Shannon$Study == "Spain"],
+       Shannon$Shannon[Shannon$GroupTime == "R_T2" & Shannon$Study == "UK"])
+t7 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0"],
+             Shannon$Shannon[Shannon$GroupTime == "R_T0"])
+t8 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T2"],
+             Shannon$Shannon[Shannon$GroupTime == "R_T2"])
+
+# Combine results into a data frame for p-value adjustment
+test_results_Sannon <- data.frame(
+    comparison = c("NR_T0 vs NR_T2", "R_T0 vs R_T2", "NR_T0 Spain vs NR_T0 UK", "NR_T2 Spain vs NR_T2 UK", "R_T0 Spain vs R_T0 UK", "R_T2 Spain vs R_T2 UK", "NR_T0 vs R_T0", "NR_T2 vs R_T2"),
+    p_value = c(t1$p.value, t2$p.value, t3$p.value, t4$p.value, t5$p.value, t6$p.value, t7$p.value, t8$p.value)
+)
+
+# Adjust p-values using BH method
+test_results_Sannon$p_adj <- p.adjust(test_results_Sannon$p_value, method = "BH")
+test_results_Sannon
+
+#> test_results_Shannon
+#               comparison   p_value     p_adj
+#1          NR_T0 vs NR_T2 0.6479653 0.8071154
+#2            R_T0 vs R_T2 0.7062260 0.8071154
+#3 NR_T0 Spain vs NR_T0 UK 0.3507639 0.7115112
+#4 NR_T2 Spain vs NR_T2 UK 0.6586883 0.8071154
+#5   R_T0 Spain vs R_T0 UK 0.3557556 0.7115112
+#6   R_T2 Spain vs R_T2 UK 0.3454075 0.7115112
+#7           NR_T0 vs R_T0 0.2652264 0.7115112
+#8           NR_T2 vs R_T2 0.8477300 0.8477300
+
+# Perform t-tests for the specific pairs
+t1 <- t.test(Fisher$Fisher[Fisher$GroupTime == "NR_T0"],
+             Fisher$Fisher[Fisher$GroupTime == "NR_T2"])
+t2 <- t.test(Fisher$Fisher[Fisher$GroupTime == "R_T0"],
+             Fisher$Fisher[Fisher$GroupTime == "R_T2"])
+t3<-t.test(Fisher$Fisher[Fisher$GroupTime == "NR_T0" & Fisher$Study == "Spain"],
+           Fisher$Fisher[Fisher$GroupTime == "NR_T0" & Fisher$Study == "UK"])
+t4<-t.test(Fisher$Fisher[Fisher$GroupTime == "NR_T2" & Fisher$Study == "Spain"],
+           Fisher$Fisher[Fisher$GroupTime == "NR_T2" & Fisher$Study == "UK"])
+t5<-t.test(Fisher$Fisher[Fisher$GroupTime == "R_T0" & Fisher$Study == "Spain"],
+           Fisher$Fisher[Fisher$GroupTime == "R_T0" & Fisher$Study == "UK"])
+t6<-t.test(Fisher$Fisher[Fisher$GroupTime == "R_T2" & Fisher$Study == "Spain"],
+           Fisher$Fisher[Fisher$GroupTime == "R_T2" & Fisher$Study == "UK"])
+t7 <- t.test(Fisher$Fisher[Fisher$GroupTime == "NR_T0"],
+             Fisher$Fisher[Fisher$GroupTime == "R_T0"])
+t8 <- t.test(Fisher$Fisher[Fisher$GroupTime == "NR_T2"],
+             Fisher$Fisher[Fisher$GroupTime == "R_T2"])
+
+# Combine results into a data frame for p-value adjustment
+test_results_Fisher <- data.frame(
+  comparison = c("NR_T0 vs NR_T2", "R_T0 vs R_T2", "NR_T0 Spain vs NR_T0 UK", "NR_T2 Spain vs NR_T2 UK", "R_T0 Spain vs R_T0 UK", "R_T2 Spain vs R_T2 UK", "NR_T0 vs R_T0", "NR_T2 vs R_T2"),
+  p_value = c(t1$p.value, t2$p.value, t3$p.value, t4$p.value, t5$p.value, t6$p.value, t7$p.value, t8$p.value)
+)
+
+# Adjust p-values using BH method
+test_results_Fisher$p_adj <- p.adjust(test_results$p_value, method = "BH")
+test_results_Fisher
+
+#> test_results_Fisher
+#               comparison   p_value     p_adj
+#1          NR_T0 vs NR_T2 0.4200665 0.8071154
+#2            R_T0 vs R_T2 0.7300266 0.8071154
+#3 NR_T0 Spain vs NR_T0 UK 0.8703186 0.7115112
+#4 NR_T2 Spain vs NR_T2 UK 0.9150340 0.8071154
+#5   R_T0 Spain vs R_T0 UK 0.7678223 0.7115112
+#6   R_T2 Spain vs R_T2 UK 0.7373593 0.7115112
+#7           NR_T0 vs R_T0 0.7459450 0.7115112
+#8           NR_T2 vs R_T2 0.5768418 0.8477300
+
+# Perform t-tests for the specific pairs
+t1 <- t.test(Chao1$Chao1[Chao1$GroupTime == "NR_T0"],
+             Chao1$Chao1[Chao1$GroupTime == "NR_T2"])
+t2 <- t.test(Chao1$Chao1[Chao1$GroupTime == "R_T0"],
+             Chao1$Chao1[Chao1$GroupTime == "R_T2"])
+t3<-t.test(Chao1$Chao1[Chao1$GroupTime == "NR_T0" & Chao1$Study == "Spain"],
+           Chao1$Chao1[Chao1$GroupTime == "NR_T0" & Chao1$Study == "UK"])
+t4<-t.test(Chao1$Chao1[Chao1$GroupTime == "NR_T2" & Chao1$Study == "Spain"],
+           Chao1$Chao1[Chao1$GroupTime == "NR_T2" & Chao1$Study == "UK"])
+t5<-t.test(Chao1$Chao1[Chao1$GroupTime == "R_T0" & Chao1$Study == "Spain"],
+           Chao1$Chao1[Chao1$GroupTime == "R_T0" & Chao1$Study == "UK"])
+t6<-t.test(Chao1$Chao1[Chao1$GroupTime == "R_T2" & Chao1$Study == "Spain"],
+           Chao1$Chao1[Chao1$GroupTime == "R_T2" & Chao1$Study == "UK"])
+t7 <- t.test(Chao1$Chao1[Chao1$GroupTime == "NR_T0"],
+             Chao1$Chao1[Chao1$GroupTime == "R_T0"])
+t8 <- t.test(Chao1$Chao1[Chao1$GroupTime == "NR_T2"],
+             Chao1$Chao1[Chao1$GroupTime == "R_T2"])
+
+# Combine results into a data frame for p-value adjustment
+test_results_Chao1 <- data.frame(
+  comparison = c("NR_T0 vs NR_T2", "R_T0 vs R_T2", "NR_T0 Spain vs NR_T0 UK", "NR_T2 Spain vs NR_T2 UK", "R_T0 Spain vs R_T0 UK", "R_T2 Spain vs R_T2 UK", "NR_T0 vs R_T0", "NR_T2 vs R_T2"),
+  p_value = c(t1$p.value, t2$p.value, t3$p.value, t4$p.value, t5$p.value, t6$p.value, t7$p.value, t8$p.value)
+)
+
+# Adjust p-values using BH method
+test_results_Chao1$p_adj <- p.adjust(test_results$p_value, method = "BH")
+test_results_Chao1
+
+#> test_results_Chao1
+#               comparison   p_value     p_adj
+#1          NR_T0 vs NR_T2 0.4444955 0.8071154
+#2            R_T0 vs R_T2 0.6991097 0.8071154
+#3 NR_T0 Spain vs NR_T0 UK 0.9941434 0.7115112
+#4 NR_T2 Spain vs NR_T2 UK 0.9975190 0.8071154
+#5   R_T0 Spain vs R_T0 UK 0.5659401 0.7115112
+#6   R_T2 Spain vs R_T2 UK 0.6513523 0.7115112
+#7           NR_T0 vs R_T0 0.6535484 0.7115112
+#8           NR_T2 vs R_T2 0.5656997 0.8477300
+```
+
+###Barplots
+```{r barplots}
+ps_merged_filtered <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ps_merged_filtered.Rds")
+# Load required libraries
+library(phyloseq)
+library(ggplot2)
+library(RColorBrewer)
+
+ps_merged_filtered<- subset_samples(ps_merged_filtered, Group_cutoff_4 %in% c("R", "NR"))
+ps_merged_filtered<- subset_samples(ps_merged_filtered, Timepoint %in% c("T0", "T2"))
+
+# Agglomerate at Phylum level
+ps_phylum <- tax_glom(ps_merged_filtered, taxrank = "Phylum")
+
+# Transform to relative abundance
+# Convert to percentages (0–100 scale)
+ps_rel <- transform_sample_counts(ps_phylum, function(x) 100 * x / sum(x))
+
+
+# Melt to long format
+df_long <- psmelt(ps_rel)
+
+# Optional: Tidy Phylum names (e.g., replace NAs or simplify)
+df_long$Phylum <- as.character(df_long$Phylum)
+df_long$Phylum[is.na(df_long$Phylum)] <- "Unclassified"
+
+# Set order of phyla by abundance (optional)
+top_phyla <- names(sort(tapply(df_long$Abundance, df_long$Phylum, sum), decreasing=TRUE))
+df_long$Phylum <- factor(df_long$Phylum, levels = top_phyla)
+
+df_summary <- df_long %>%
+    group_by(Group_cutoff_4, Phylum) %>%
+    summarise(Abundance = mean(Abundance), .groups = "drop")
+
+df_summary <- df_summary %>%
+    mutate(Phylum = case_when(
+        Phylum %in% c("NA unknown", "NA Bacteria phylum incertae sedis") ~ "Unclassified",
+        TRUE ~ as.character(Phylum)
+    ))
+
+# Optional: reorder phyla
+top_phyla <- names(sort(tapply(df_summary$Abundance, df_summary$Phylum, sum), decreasing = TRUE))
+df_summary$Phylum <- factor(df_summary$Phylum, levels = top_phyla)
+
+# Plot
+color_palette <- c(
+    "Bacteroidetes" = "#0072B2",    # dark blue
+    "Firmicutes" = "#56B4E9",     # light blue 
+    "Proteobacteria" = "#F0E442",    # yellow 
+    "Actinobacteria" = "#CC79A7",    # pink
+    "Elusimicrobia" = "#D55E00",    # dark orange 
+    "Tenericutes" = "#E69F00",        # orange 
+    "Ignavibacteriae" = "#009E73",    # green
+    "Unclassified" = "#999999"       # grey
+)
+
+
+ggplot(df_summary, aes(x = Group_cutoff_4, y = Abundance, fill = Phylum)) +
+    geom_bar(stat = "identity", position = "stack", alpha = 0.6) +
+    scale_fill_manual(values = color_palette) +
+    theme_classic(base_size = 14) +
+    labs(x = "Group", y = "Relative Abundance (%)", fill = "Phylum") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    ylim(0, 100)
+
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Barplots_tax.pdf", height = 5, width = 4)
+```
+
+#GMMs
+
+```{r libraries and objects GMMs}
+library("phyloseq"); packageVersion("phyloseq")
+library(readr)
+library(data.table)
+library(ggpubr)
+library(ggrepel)
+library("ggplot2"); packageVersion("ggplot2")
+GMMs_corrected<- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/GMMs_corrected.Rds")
+# Because ARSyN applies log transformation we have negative values, to perform shannon we need no negative entries
+otu<-abundances(GMMs_corrected)+135911
+otu_table(GMMs_corrected) <- otu_table(otu, taxa_are_rows = TRUE)
+
+GMM_raw<- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/GMMs_merged.Rds")
+# Remove Volunteer with less than 1 read from phyloseq object
+GMM_0 <- prune_taxa(taxa_sums(GMM_raw) > 0, GMM_raw)
+GMM_0
+GMM_0<- subset_samples(GMM_0, Group_cutoff_4 %in% c("R", "NR"))
+GMM_0<- subset_samples(GMM_0, Timepoint %in% c("T0", "T2"))
+
+```
+
+```{r GMM Aplha Diversity}
+
+library(ggsignif)
+#Shannon
+Shannon<-phyloseq::estimate_richness(GMM_0, measures = "Shannon")
+metadata<- data.frame(sample_data(GMM_0)) 
+Shannon$Timepoint<-metadata$Timepoint
+Shannon$Group_cutoff_4<-metadata$Group_cutoff_4
+Shannon$Volunteer<-metadata$Volunteer
+Shannon$Study<-metadata$Study
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+Shannon$GroupTime <-metadata$GroupTime 
+pShannon<- ggplot(Shannon, aes(x = GroupTime, y = Shannon)) +
+  geom_boxplot(aes(fill = Group_cutoff_4), position = position_dodge(width = 0.8), alpha = 0.25) +
+  geom_jitter(aes(color = Study), alpha =1,
+              position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 2.5) +
+  scale_fill_manual(values = c("NR" = "#CC79A7", "R" = "#009E73"), name = "Group cutoff 4") +
+  scale_color_manual(values = c("Spain" = "#E69F00", "UK" = "#0072B2"), name = "Cohort") +
+  theme_minimal() +
+  labs(x = "Group cutoff 4 and Timepoint", y = "Shannon Index")
+pShannon
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Alpha_Div_GMM_0.pdf", height = 5, width = 4)
+
+
+#Shannon corrected
+Shannon_corrected<-phyloseq::estimate_richness(GMMs_corrected, measures = "Shannon")
+metadata<- data.frame(sample_data(GMMs_corrected)) 
+Shannon_corrected$Timepoint<-metadata$Timepoint
+Shannon_corrected$Group_cutoff_4<-metadata$Group_cutoff_4
+Shannon_corrected$Volunteer<-metadata$Volunteer
+Shannon_corrected$Study<-metadata$Study
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+Shannon_corrected$GroupTime <-metadata$GroupTime 
+pShannon<- ggplot(Shannon_corrected, aes(x = GroupTime, y = Shannon)) +
+  geom_boxplot(aes(fill = Group_cutoff_4), position = position_dodge(width = 0.8), alpha = 0.25) +
+  geom_jitter(aes(color = Study), alpha =1,
+              position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 2.5) +
+  scale_fill_manual(values = c("NR" = "#CC79A7", "R" = "#009E73"), name = "Group cutoff 4") +
+  scale_color_manual(values = c("Spain" = "#E69F00", "UK" = "#0072B2"), name = "Cohort") +
+  theme_minimal() +
+  labs(x = "Group cutoff 4 and Timepoint", y = "Shannon Index")
+pShannon
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Alpha_Div_GMMs_corrected.pdf", height = 5, width = 4)
+
+
+# Extract OTU table - samples in columns or rows (transpose if needed)
+otu_counts <- as.data.frame(t(otu_table(GMM_0)))
+# Calculate total reads per sample
+total_reads <- rowSums(otu_counts)
+
+# Create data frame and add metadata
+metadata <- data.frame(sample_data(GMM_0))
+total_reads_df <- data.frame(Sample = rownames(metadata), TotalReads = total_reads)
+total_reads_df$Timepoint <- metadata$Timepoint
+total_reads_df$Group_cutoff_4 <- metadata$Group_cutoff_4
+total_reads_df$Volunteer <- metadata$Volunteer
+total_reads_df$Study <- metadata$Study
+
+# Create combined group variable if needed
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+total_reads_df$GroupTime <- metadata$GroupTime
+
+# Plot total reads with ggplot2
+pTotalReads <- ggplot(total_reads_df, aes(x = GroupTime, y = TotalReads)) +
+    geom_boxplot(aes(fill = Group_cutoff_4), position = position_dodge(width = 0.8), alpha = 0.25) +
+    geom_jitter(aes(color = Study), alpha = 1,
+                position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 2.5) +
+    scale_fill_manual(values = c("NR" = "#CC79A7", "R" = "#009E73"), name = "Group cutoff 4") +
+    scale_color_manual(values = c("Spain" = "#E69F00", "UK" = "#0072B2"), name = "Cohort") +
+    theme_minimal() +
+    labs(x = "Group cutoff 4 and Timepoint", y = "Total Reads")
+pTotalReads
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Total_reads_GMMs_0.pdf", height = 5, width = 4)
+
+```
+
+
+```{r comaprisons for significance}
+Shannon<-phyloseq::estimate_richness(GMM_0, measures = "Shannon")
+metadata<- data.frame(sample_data(GMM_0)) 
+Shannon$Timepoint<-metadata$Timepoint
+Shannon$Group_cutoff_4<-metadata$Group_cutoff_4
+Shannon$Volunteer<-metadata$Volunteer
+Shannon$Study<-metadata$Study
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+Shannon$GroupTime <-metadata$GroupTime 
+# Perform t-tests for the specific pairs
+t1 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0"],
+             Shannon$Shannon[Shannon$GroupTime == "NR_T2"])
+t2 <- t.test(Shannon$Shannon[Shannon$GroupTime == "R_T0"],
+             Shannon$Shannon[Shannon$GroupTime == "R_T2"])
+t3<-t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0" & Shannon$Study == "Spain"],
+       Shannon$Shannon[Shannon$GroupTime == "NR_T0" & Shannon$Study == "UK"])
+t4<-t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T2" & Shannon$Study == "Spain"],
+       Shannon$Shannon[Shannon$GroupTime == "NR_T2" & Shannon$Study == "UK"])
+t5<-t.test(Shannon$Shannon[Shannon$GroupTime == "R_T0" & Shannon$Study == "Spain"],
+       Shannon$Shannon[Shannon$GroupTime == "R_T0" & Shannon$Study == "UK"])
+t6<-t.test(Shannon$Shannon[Shannon$GroupTime == "R_T2" & Shannon$Study == "Spain"],
+       Shannon$Shannon[Shannon$GroupTime == "R_T2" & Shannon$Study == "UK"])
+t7 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0"],
+             Shannon$Shannon[Shannon$GroupTime == "R_T0"])
+t8 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T2"],
+             Shannon$Shannon[Shannon$GroupTime == "R_T2"])
+
+# Combine results into a data frame for p-value adjustment
+test_results_Sannon <- data.frame(
+    comparison = c("NR_T0 vs NR_T2", "R_T0 vs R_T2", "NR_T0 Spain vs NR_T0 UK", "NR_T2 Spain vs NR_T2 UK", "R_T0 Spain vs R_T0 UK", "R_T2 Spain vs R_T2 UK", "NR_T0 vs R_T0", "NR_T2 vs R_T2"),
+    p_value = c(t1$p.value, t2$p.value, t3$p.value, t4$p.value, t5$p.value, t6$p.value, t7$p.value, t8$p.value)
+)
+
+# Adjust p-values using BH method
+test_results_Sannon$p_adj <- p.adjust(test_results_Sannon$p_value, method = "BH")
+test_results_Sannon$signif <- cut(
+  test_results_Sannon$p_adj,
+  breaks = c(-Inf, 0.001, 0.01, 0.05, Inf),
+  labels = c("***", "**", "*", "")
+)
+test_results_Sannon
+
+#> test_results_Shannon
+#               comparison      p_value       p_adj signif
+#1          NR_T0 vs NR_T2 0.5957623119 0.595762312       
+#2            R_T0 vs R_T2 0.4381242880 0.584165717       
+#3 NR_T0 Spain vs NR_T0 UK 0.0004512338 0.003609870     **
+#4 NR_T2 Spain vs NR_T2 UK 0.0058843946 0.015691719      *
+#5   R_T0 Spain vs R_T0 UK 0.0473265338 0.094653068       
+#6   R_T2 Spain vs R_T2 UK 0.0011916085 0.004766434     **
+#7           NR_T0 vs R_T0 0.0916416743 0.146626679       
+#8           NR_T2 vs R_T2 0.5514133827 0.595762312  
+
+# Perform t-tests for the specific pairs
+t1 <- t.test(Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "NR_T0"],
+             Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "NR_T2"])
+t2 <- t.test(Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "R_T0"],
+             Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "R_T2"])
+t3<-t.test(Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "NR_T0" & Shannon_corrected$Study == "Spain"],
+           Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "NR_T0" & Shannon_corrected$Study == "UK"])
+t4<-t.test(Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "NR_T2" & Shannon_corrected$Study == "Spain"],
+           Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "NR_T2" & Shannon_corrected$Study == "UK"])
+t5<-t.test(Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "R_T0" & Shannon_corrected$Study == "Spain"],
+           Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "R_T0" & Shannon_corrected$Study == "UK"])
+t6<-t.test(Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "R_T2" & Shannon_corrected$Study == "Spain"],
+           Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "R_T2" & Shannon_corrected$Study == "UK"])
+t7 <- t.test(Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "NR_T0"],
+             Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "R_T0"])
+t8 <- t.test(Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "NR_T2"],
+             Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "R_T2"])
+
+# Combine results into a data frame for p-value adjustment
+test_results_Sannon_corrected <- data.frame(
+  comparison = c("NR_T0 vs NR_T2", "R_T0 vs R_T2", "NR_T0 Spain vs NR_T0 UK", "NR_T2 Spain vs NR_T2 UK", "R_T0 Spain vs R_T0 UK", "R_T2 Spain vs R_T2 UK", "NR_T0 vs R_T0", "NR_T2 vs R_T2"),
+  p_value = c(t1$p.value, t2$p.value, t3$p.value, t4$p.value, t5$p.value, t6$p.value, t7$p.value, t8$p.value)
+)
+
+# Adjust p-values using BH method
+test_results_Sannon_corrected$p_adj <- p.adjust(test_results_Sannon_corrected$p_value, method = "BH")
+test_results_Sannon_corrected$signif <- cut(
+  test_results_Sannon_corrected$p_adj,
+  breaks = c(-Inf, 0.001, 0.01, 0.05, Inf),
+  labels = c("***", "**", "*", "")
+)
+test_results_Sannon_corrected
+
+#> test_results_Shannon_corrected
+#               comparison      p_value        p_adj signif
+#1          NR_T0 vs NR_T2 7.601401e-01 8.355632e-01       
+#2            R_T0 vs R_T2 7.945825e-01 8.355632e-01       
+#3 NR_T0 Spain vs NR_T0 UK 3.787914e-01 6.060662e-01       
+#4 NR_T2 Spain vs NR_T2 UK 2.757410e-03 7.353093e-03     **
+#5   R_T0 Spain vs R_T0 UK 8.355632e-01 8.355632e-01       
+#6   R_T2 Spain vs R_T2 UK 9.648041e-02 1.929608e-01       
+#7           NR_T0 vs R_T0 2.147938e-05 8.591752e-05    ***
+#8           NR_T2 vs R_T2 1.335429e-05 8.591752e-05    ***
+```
+
+###Barplots
+```{r barplots}
+GMM_raw<- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/GMMs_merged.Rds")
+# Remove Volunteer with less than 1 read from phyloseq object
+GMM_0 <- prune_taxa(taxa_sums(GMM_raw) > 0, GMM_raw)
+GMM_0
+GMM_0<- subset_samples(GMM_0, Group_cutoff_4 %in% c("R", "NR"))
+GMM_0<- subset_samples(GMM_0, Timepoint %in% c("T0", "T2"))# Load required libraries
+tax<-as.data.frame(tax_table(GMM_0))
+
+tax <- tax %>%
+  mutate(
+    Category = case_when(
+      grepl("degradation", V2, ignore.case = TRUE) & grepl("tyrosine|phenylalanine|tryptophan|glutamate|alanine|valine|isoleucine|leucine|methionine|cysteine|aspartate|asparagine|glycine|serine|threonine|proline|histidine|lysine|arginine|glutamine", V2) ~ "Amino Acid Degradation",
+      grepl("synthesis", V2, ignore.case = TRUE) & grepl("tyrosine|phenylalanine|tryptophan|glutamate|GABA|serotonin|histamine|dopamine", V2) ~ "Amino Acid or Neuroactive Synthesis",
+      grepl("degradation", V2, ignore.case = TRUE) & grepl("lactose|sucrose|fructose|galactose|starch|trehalose|arabinose|xylose|mannose|rhamnose|melibiose|maltose|allose|pectin|fructan|galacturonate", V2) ~ "Sugar Degradation",
+      grepl("glycolysis|pentose phosphate|Entner-Doudoroff|Bifidobacterium shunt", V2, ignore.case = TRUE) ~ "Sugar Metabolism",
+      grepl("butyrate|propionate|acetate", V2, ignore.case = TRUE) ~ "SCFA Metabolism",
+      grepl("menaquinone|SAM|vitamin", V2, ignore.case = TRUE) ~ "Vitamin & Cofactor Metabolism",
+      grepl("serotonin|GABA|dopamine|histamine|tryptamine", V2, ignore.case = TRUE) ~ "Neuroactive Compound Metabolism",
+      grepl("triacylglycerol|glycerol|fatty acid", V2, ignore.case = TRUE) ~ "Lipid Metabolism",
+      grepl("nitric oxide|hydrogen|sulfate|nitrate", V2, ignore.case = TRUE) ~ "Gas Metabolism",
+      grepl("methanogenesis", V2, ignore.case = TRUE) ~ "Methanogenesis",
+      grepl("quinolinic acid|DOPAC|NAD", V2, ignore.case = TRUE) ~ "Nucleotide/Quinone Metabolism",
+      grepl("chaperone", V2, ignore.case = TRUE) ~ "Peptide/Protein Metabolism",
+      TRUE ~ "Other"
+    ),
+    Category_Description = case_when(
+      Category == "Amino Acid Degradation" ~ "Breakdown of amino acids like tyrosine, glutamate, lysine, etc.",
+      Category == "Amino Acid or Neuroactive Synthesis" ~ "Biosynthesis of amino acids and related neurotransmitters (e.g., GABA, serotonin).",
+      Category == "Sugar Degradation" ~ "Catabolism of mono-, di-, and polysaccharides (e.g., lactose, pectin, trehalose).",
+      Category == "Sugar Metabolism" ~ "Core sugar metabolic pathways like glycolysis and pentose phosphate pathway.",
+      Category == "SCFA Metabolism" ~ "Production or degradation of short-chain fatty acids (butyrate, propionate, acetate).",
+      Category == "Vitamin & Cofactor Metabolism" ~ "Biosynthesis of vitamins and cofactors like vitamin K2, SAM.",
+      Category == "Neuroactive Compound Metabolism" ~ "Metabolism of compounds affecting the nervous system (e.g., GABA, dopamine).",
+      Category == "Lipid Metabolism" ~ "Metabolism of lipids, glycerol, and fatty acids.",
+      Category == "Gas Metabolism" ~ "Involves nitrogen, sulfur, and hydrogen compound transformations (e.g., NO, sulfate).",
+      Category == "Methanogenesis" ~ "Microbial pathways producing methane from carbon or methyl sources.",
+      Category == "Nucleotide/Quinone Metabolism" ~ "Metabolism of nucleotide-like or redox-active compounds (e.g., quinolinic acid).",
+      Category == "Peptide/Protein Metabolism" ~ "Chaperone proteins and protein folding/degradation.",
+      Category == "Other" ~ "Does not fit clearly into predefined categories.",
+      TRUE ~ NA_character_
+    )
+  )
+tax_table(GMM_0) <- tax_table(as.matrix(tax))
+
+
+library(phyloseq)
+library(ggplot2)
+library(RColorBrewer)
+
+# Agglomerate at Category level
+GMM_Category <- tax_glom(GMM_0, taxrank = "Category")
+
+# Melt to long format
+df_long <- psmelt(GMM_0)
+
+# Optional: Tidy Category names (e.g., replace NAs or simplify)
+df_long$Category <- as.character(df_long$Category)
+df_long$Category[is.na(df_long$Category)] <- "Unclassified"
+library(dplyr)
+library(ggplot2)
+
+# Step 1: Calculate mean abundance per group and category
+df_summary <- df_long %>%
+  group_by(Group_cutoff_4, Category) %>%
+  summarise(Abundance = mean(Abundance), .groups = "drop")
+
+# Step 2: Normalize within each group to make each bar total 100%
+df_summary <- df_summary %>%
+  group_by(Group_cutoff_4) %>%
+  mutate(RelativeAbundance = 100 * Abundance / sum(Abundance)) %>%
+  ungroup()
+
+# Step 3: Reorder categories by total relative abundance (optional)
+top_categories <- names(sort(tapply(df_summary$RelativeAbundance, df_summary$Category, sum), decreasing = TRUE))
+df_summary$Category <- factor(df_summary$Category, levels = top_categories)
+
+# Step 4: Plot
+ggplot(df_summary, aes(x = Group_cutoff_4, y = RelativeAbundance, fill = Category)) +
+  geom_bar(stat = "identity", position = "stack", alpha = 0.8) +
+  theme_classic(base_size = 14) +
+  labs(x = "Group", y = "Relative Abundance (%)", fill = "Category") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ylim(0, 100)
+
+
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Barplots_GMMs.pdf", height = 5, width = 5)
+```
+
+#ARGs ok
+```{r libraries and objects ARGs}
+library("phyloseq"); packageVersion("phyloseq")
+library(readr)
+library(data.table)
+library(ggpubr)
+library(ggrepel)
+library("ggplot2"); packageVersion("ggplot2")
+ARGs_ok_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ARGs_ok_corrected.Rds")
+# Because ARSyN applies log transformation we have negative values, to perform shannon we need no negative entries
+otu<-abundances(ARGs_ok_corrected)+2607523
+otu_table(ARGs_ok_corrected) <- otu_table(otu, taxa_are_rows = TRUE)
+
+ARGs_ok <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ARGs_ok.Rds")
+# Remove Volunteer with less than 1 read from phyloseq object
+ARGs_ok<- subset_samples(ARGs_ok, Group_cutoff_4 %in% c("R", "NR"))
+ARGs_ok<- subset_samples(ARGs_ok, Timepoint %in% c("T0", "T2"))
+
+```
+
+```{r ARRs ok Aplha Diversity}
+
+library(ggsignif)
+#Shannon
+Shannon<-phyloseq::estimate_richness(ARGs_ok, measures = "Shannon")
+metadata<- data.frame(sample_data(ARGs_ok)) 
+Shannon$Timepoint<-metadata$Timepoint
+Shannon$Group_cutoff_4<-metadata$Group_cutoff_4
+Shannon$Volunteer<-metadata$Volunteer
+Shannon$Study<-metadata$Study
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+Shannon$GroupTime <-metadata$GroupTime 
+pShannon<- ggplot(Shannon, aes(x = GroupTime, y = Shannon)) +
+  geom_boxplot(aes(fill = Group_cutoff_4), position = position_dodge(width = 0.8), alpha = 0.25) +
+  geom_jitter(aes(color = Study), alpha =1,
+              position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 2.5) +
+  scale_fill_manual(values = c("NR" = "#CC79A7", "R" = "#009E73"), name = "Group cutoff 4") +
+  scale_color_manual(values = c("Spain" = "#E69F00", "UK" = "#0072B2"), name = "Cohort") +
+  theme_minimal() +
+  labs(x = "Group cutoff 4 and Timepoint", y = "Shannon Index")
+pShannon
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Alpha_Div_ARGs_ok.pdf", height = 5, width = 4)
+
+
+#Shannon corrected
+Shannon_corrected<-phyloseq::estimate_richness(ARGs_ok_corrected, measures = "Shannon")
+metadata<- data.frame(sample_data(ARGs_ok_corrected)) 
+Shannon_corrected$Timepoint<-metadata$Timepoint
+Shannon_corrected$Group_cutoff_4<-metadata$Group_cutoff_4
+Shannon_corrected$Volunteer<-metadata$Volunteer
+Shannon_corrected$Study<-metadata$Study
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+Shannon_corrected$GroupTime <-metadata$GroupTime 
+pShannon<- ggplot(Shannon_corrected, aes(x = GroupTime, y = Shannon)) +
+  geom_boxplot(aes(fill = Group_cutoff_4), position = position_dodge(width = 0.8), alpha = 0.25) +
+  geom_jitter(aes(color = Study), alpha =1,
+              position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 2.5) +
+  scale_fill_manual(values = c("NR" = "#CC79A7", "R" = "#009E73"), name = "Group cutoff 4") +
+  scale_color_manual(values = c("Spain" = "#E69F00", "UK" = "#0072B2"), name = "Cohort") +
+  theme_minimal() +
+  labs(x = "Group cutoff 4 and Timepoint", y = "Shannon Index")
+pShannon
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Alpha_Div_ARGs_ok_corrected.pdf", height = 5, width = 4)
+
+
+# Extract OTU table - samples in columns or rows (transpose if needed)
+otu_counts <- as.data.frame(t(otu_table(ARGs_ok)))
+# Calculate total reads per sample
+total_reads <- rowSums(otu_counts)
+
+# Create data frame and add metadata
+metadata <- data.frame(sample_data(ARGs_ok))
+total_reads_df <- data.frame(Sample = rownames(metadata), TotalReads = total_reads)
+total_reads_df$Timepoint <- metadata$Timepoint
+total_reads_df$Group_cutoff_4 <- metadata$Group_cutoff_4
+total_reads_df$Volunteer <- metadata$Volunteer
+total_reads_df$Study <- metadata$Study
+
+# Create combined group variable if needed
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+total_reads_df$GroupTime <- metadata$GroupTime
+
+# Plot total reads with ggplot2
+pTotalReads <- ggplot(total_reads_df, aes(x = GroupTime, y = TotalReads)) +
+  geom_boxplot(aes(fill = Group_cutoff_4), position = position_dodge(width = 0.8), alpha = 0.25) +
+  geom_jitter(aes(color = Study), alpha = 1,
+              position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 2.5) +
+  scale_fill_manual(values = c("NR" = "#CC79A7", "R" = "#009E73"), name = "Group cutoff 4") +
+  scale_color_manual(values = c("Spain" = "#E69F00", "UK" = "#0072B2"), name = "Cohort") +
+  theme_minimal() +
+  labs(x = "Group cutoff 4 and Timepoint", y = "Total Reads")
+pTotalReads
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Total_reads_ARG_ok.pdf", height = 5, width = 4)
+
+```
+
+
+```{r comaprisons for significance ARG ok}
+Shannon<-phyloseq::estimate_richness(ARGs_ok, measures = "Shannon")
+metadata<- data.frame(sample_data(ARGs_ok)) 
+Shannon$Timepoint<-metadata$Timepoint
+Shannon$Group_cutoff_4<-metadata$Group_cutoff_4
+Shannon$Volunteer<-metadata$Volunteer
+Shannon$Study<-metadata$Study
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+Shannon$GroupTime <-metadata$GroupTime 
+# Perform t-tests for the specific pairs
+t1 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0"],
+             Shannon$Shannon[Shannon$GroupTime == "NR_T2"])
+t2 <- t.test(Shannon$Shannon[Shannon$GroupTime == "R_T0"],
+             Shannon$Shannon[Shannon$GroupTime == "R_T2"])
+t3<-t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0" & Shannon$Study == "Spain"],
+           Shannon$Shannon[Shannon$GroupTime == "NR_T0" & Shannon$Study == "UK"])
+t4<-t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T2" & Shannon$Study == "Spain"],
+           Shannon$Shannon[Shannon$GroupTime == "NR_T2" & Shannon$Study == "UK"])
+
+t7 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0"],
+             Shannon$Shannon[Shannon$GroupTime == "R_T0"])
+t8 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T2"],
+             Shannon$Shannon[Shannon$GroupTime == "R_T2"])
+
+# Combine results into a data frame for p-value adjustment
+test_results_Sannon <- data.frame(
+  comparison = c("NR_T0 vs NR_T2", "R_T0 vs R_T2", "NR_T0 Spain vs NR_T0 UK", "NR_T2 Spain vs NR_T2 UK", "NR_T0 vs R_T0", "NR_T2 vs R_T2"),
+  p_value = c(t1$p.value, t2$p.value, t3$p.value, t4$p.value, t7$p.value, t8$p.value)
+)
+
+test_results_Sannon$p_adj <- p.adjust(test_results_Sannon$p_value, method = "BH")
+test_results_Sannon$signif <- cut(
+  test_results_Sannon$p_adj,
+  breaks = c(-Inf, 0.001, 0.01, 0.05, Inf),
+  labels = c("***", "**", "*", "")
+)
+
+test_results_Sannon
+#               comparison    p_value     p_adj signif
+#1          NR_T0 vs NR_T2 0.55468496 0.57820608       
+#2            R_T0 vs R_T2 0.57820608 0.57820608       
+#3 NR_T0 Spain vs NR_T0 UK 0.05159218 0.10318435       
+#4 NR_T2 Spain vs NR_T2 UK 0.02486760 0.07460281       
+#5           NR_T0 vs R_T0 0.01125320 0.06751921       
+#6           NR_T2 vs R_T2 0.23713031 0.35569547 
+
+
+Shannon_corrected<-phyloseq::estimate_richness(ARGs_ok_corrected, measures = "Shannon")
+metadata<- data.frame(sample_data(ARGs_ok_corrected)) 
+Shannon_corrected$Timepoint<-metadata$Timepoint
+Shannon_corrected$Group_cutoff_4<-metadata$Group_cutoff_4
+Shannon_corrected$Volunteer<-metadata$Volunteer
+Shannon_corrected$Study<-metadata$Study
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+Shannon_corrected$GroupTime <-metadata$GroupTime 
+# Perform t-tests for the specific pairs
+t1 <- t.test(Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "NR_T0"],
+             Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "NR_T2"])
+t2 <- t.test(Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "R_T0"],
+             Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "R_T2"])
+t3<-t.test(Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "NR_T0" & Shannon_corrected$Study == "Spain"],
+           Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "NR_T0" & Shannon_corrected$Study == "UK"])
+t4<-t.test(Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "NR_T2" & Shannon_corrected$Study == "Spain"],
+           Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "NR_T2" & Shannon_corrected$Study == "UK"])
+
+t7 <- t.test(Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "NR_T0"],
+             Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "R_T0"])
+t8 <- t.test(Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "NR_T2"],
+             Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "R_T2"])
+
+# Combine results into a data frame for p-value adjustment
+test_results_Sannon <- data.frame(
+  comparison = c("NR_T0 vs NR_T2", "R_T0 vs R_T2", "NR_T0 Spain vs NR_T0 UK", "NR_T2 Spain vs NR_T2 UK", "NR_T0 vs R_T0", "NR_T2 vs R_T2"),
+  p_value = c(t1$p.value, t2$p.value, t3$p.value, t4$p.value, t7$p.value, t8$p.value)
+)
+
+test_results_Sannon$p_adj <- p.adjust(test_results_Sannon$p_value, method = "BH")
+test_results_Sannon$signif <- cut(
+  test_results_Sannon$p_adj,
+  breaks = c(-Inf, 0.001, 0.01, 0.05, Inf),
+  labels = c("***", "**", "*", "")
+)
+
+test_results_Sannon
+
+#               comparison   p_value     p_adj signif
+#1          NR_T0 vs NR_T2 0.3988675 0.7014743       
+#2            R_T0 vs R_T2 0.8096220 0.8096220       
+#3 NR_T0 Spain vs NR_T0 UK 0.7636711 0.8096220       
+#4 NR_T2 Spain vs NR_T2 UK 0.4676495 0.7014743       
+#5           NR_T0 vs R_T0 0.1139780 0.5543029       
+#6           NR_T2 vs R_T2 0.1847676 0.5543029  
+```
+
+###Barplots
+```{r barplots ok}
+ARGs_ok <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ARGs_ok.Rds")
+
+tax<-as.data.frame(tax_table(ARGs_ok))
+
+ARGs_ok<- subset_samples(ARGs_ok, Group_cutoff_4 %in% c("R", "NR"))
+ARGs_ok<- subset_samples(ARGs_ok, Timepoint %in% c("T0", "T2"))
+
+library(dplyr)
+library(stringr)
+
+tax <- tax %>%
+  mutate(Class = case_when(
+    str_detect(`Drug Class`, regex("aminoglycoside", ignore_case = TRUE)) ~ "Aminoglycoside",
+    str_detect(`Drug Class`, regex("rifamycin", ignore_case = TRUE)) ~ "Rifamycin",
+    str_detect(`Drug Class`, regex("tetracycline|minocycline|doxycycline|tigecycline", ignore_case = TRUE)) ~ "Tetracycline",
+    str_detect(`Drug Class`, regex("phenicol", ignore_case = TRUE)) ~ "Amphenicol",
+    str_detect(`Drug Class`, regex("beta-lactam|penam|penem|monobactam|carbapenem|cephalosporin|cephamycin", ignore_case = TRUE)) ~ "Beta-lactam",
+    str_detect(`Drug Class`, regex("diaminopyrimidine|sulfonamide|sulfone|trimethoprim", ignore_case = TRUE)) ~ "Folate pathway antagonist",
+    str_detect(`Drug Class`, regex("glycopeptide", ignore_case = TRUE)) ~ "Glycopeptide",
+    str_detect(`Drug Class`, regex("ionophore", ignore_case = TRUE)) ~ "Ionophore",  # might not appear in your data
+    str_detect(`Drug Class`, regex("lincosamide", ignore_case = TRUE)) ~ "Lincosamide",
+    str_detect(`Drug Class`, regex("macrolide", ignore_case = TRUE)) ~ "Macrolide",
+    str_detect(`Drug Class`, regex("pleuromutilin", ignore_case = TRUE)) ~ "Pleuromutilin",
+    str_detect(`Drug Class`, regex("fluoroquinolone|quinolone", ignore_case = TRUE)) ~ "Quinolone",
+    str_detect(`Drug Class`, regex("streptogramin", ignore_case = TRUE)) ~ "Streptogramin",
+    str_detect(`Drug Class`, regex("nitroimidazole|nitrofuran", ignore_case = TRUE)) ~ "Nitroimidazole",
+    str_detect(`Drug Class`, regex("oxazolidinone|linezolid", ignore_case = TRUE)) ~ "Oxazolidinone",  # rare in this column
+    str_detect(`Drug Class`, regex("fosfomycin", ignore_case = TRUE)) ~ "Fosfomycin",
+    str_detect(`Drug Class`, regex("elfamycin", ignore_case = TRUE)) ~ "Elfamycin",
+    str_detect(`Drug Class`, regex("aminocoumarin", ignore_case = TRUE)) ~ "Aminocoumarin",
+    str_detect(`Drug Class`, regex("acridine dye", ignore_case = TRUE)) ~ "Acridine dye",
+    str_detect(`Drug Class`, regex("triclosan", ignore_case = TRUE)) ~ "Triclosan",
+    str_detect(`Drug Class`, regex("benzalkonium chloride|rhodamine", ignore_case = TRUE)) ~ "Biocide",
+    TRUE ~ "Unclassified"
+  ))
+
+
+library(phyloseq)
+library(ggplot2)
+library(RColorBrewer)
+
+tax$Class[is.na(tax$`Drug Class`)] <- "Unclassified"
+tax$Class2 <- tax$Class
+tax<-tax[,c("Class", "Class2")]
+
+tax_table(ARGs_ok) <- tax_table(as.matrix(tax))
+
+# Agglomerate at Class level
+ARGs_ok_Drug_Class <- tax_glom(ARGs_ok, taxrank = "Class")
+
+# Melt to long format
+df_long <- psmelt(ARGs_ok_Drug_Class)
+
+
+# Step 1: Calculate mean abundance per group and Class
+df_summary <- df_long %>%
+  group_by(Group_cutoff_4, Class) %>%
+  summarise(Abundance = mean(Abundance), .groups = "drop")
+
+# Step 2: Normalize within each group to make each bar total 100%
+df_summary <- df_summary %>%
+  group_by(Group_cutoff_4) %>%
+  mutate(RelativeAbundance = 100 * Abundance / sum(Abundance)) %>%
+  ungroup()
+
+# Step 3: Reorder categories by total relative abundance (optional)
+top_categories <- names(sort(tapply(df_summary$RelativeAbundance, df_summary$Class, sum), decreasing = TRUE))
+df_summary$Class <- factor(df_summary$Class, levels = top_categories)
+
+# Step 4: Plot
+
+color_palette <- c(
+  "Beta-lactam" = "#0072B2",    
+  "Folate pathway antagonist" = "#56B4E9",     
+  "Lincosamide" = "lightblue",       
+  "Tetracycline" = "#DBA5FF",       
+  "Rifamycin" = "#8B008B",
+  "Quinolone" = "#C8A2C9",    
+  "Aminoglycoside" = "#CC79A7",    
+  "Fosfomycin"= "#F3D3D9",
+  "Amphenicol" = "#D55E00",    
+  "Aminocoumarin" = "#E69F00",        
+  "Acridine dye" = "#F0E442",    
+  "Nitroimidazole" = "#FFFAE5",
+  "Macrolide" = "#DBF3C9", 
+  "Elfamycin" = "#00C04B",
+  "Pleuromutilin" = "#009E73",    
+  "Glycopeptide" = "turquoise",    
+  "Unclassified" = "#999999"       # grey
+)
+ggplot(df_summary, aes(x = Group_cutoff_4, y = RelativeAbundance, fill = Class)) +
+  geom_bar(stat = "identity", position = "stack", alpha = 0.6) +
+  scale_fill_manual(values = color_palette) +
+  theme_classic(base_size = 14) +
+  labs(x = "Group", y = "Relative Abundance (%)", fill = "Class") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ylim(0, 100)
+
+
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Barplots_ARG_ok.pdf", height = 5, width = 4)
+
+
+ggplot(df_summary, aes(x = Group_cutoff_4, y = RelativeAbundance, fill = Class)) +
+  geom_bar(stat = "identity", position = "stack", alpha = 0.8) +
+  theme_classic(base_size = 14) +
+  labs(x = "Group", y = "Relative Abundance (%)", fill = "Class") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ylim(0, 100)
+```
+
+```````` 
+#ARGs rgi
+```{r libraries and objects ARGs}
+library("phyloseq"); packageVersion("phyloseq")
+library(readr)
+library(data.table)
+library(ggpubr)
+library(ggrepel)
+library("ggplot2"); packageVersion("ggplot2")
+ARGs_rgi_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ARGs_rgi_corrected.Rds")
+# Because ARSyN applies log transformation we have negative values, to perform shannon we need no negative entries
+otu<-abundances(ARGs_rgi_corrected)+2607523
+otu_table(ARGs_rgi_corrected) <- otu_table(otu, taxa_are_rows = TRUE)
+
+ARGs_rgi <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ARGs_rgi.Rds")
+# Remove Volunteer with less than 1 read from phyloseq object
+ARGs_rgi<- subset_samples(ARGs_rgi, Group_cutoff_4 %in% c("R", "NR"))
+ARGs_rgi<- subset_samples(ARGs_rgi, Timepoint %in% c("T0", "T2"))
+
+```
+
+```{r ARRs rgi Aplha Diversity}
+
+library(ggsignif)
+#Shannon
+Shannon<-phyloseq::estimate_richness(ARGs_rgi, measures = "Shannon")
+metadata<- data.frame(sample_data(ARGs_rgi)) 
+Shannon$Timepoint<-metadata$Timepoint
+Shannon$Group_cutoff_4<-metadata$Group_cutoff_4
+Shannon$Volunteer<-metadata$Volunteer
+Shannon$Study<-metadata$Study
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+Shannon$GroupTime <-metadata$GroupTime 
+pShannon<- ggplot(Shannon, aes(x = GroupTime, y = Shannon)) +
+  geom_boxplot(aes(fill = Group_cutoff_4), position = position_dodge(width = 0.8), alpha = 0.25) +
+  geom_jitter(aes(color = Study), alpha =1,
+              position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 2.5) +
+  scale_fill_manual(values = c("NR" = "#CC79A7", "R" = "#009E73"), name = "Group cutoff 4") +
+  scale_color_manual(values = c("Spain" = "#E69F00", "UK" = "#0072B2"), name = "Cohort") +
+  theme_minimal() +
+  labs(x = "Group cutoff 4 and Timepoint", y = "Shannon Index")
+pShannon
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Alpha_Div_ARGs_rgi.pdf", height = 5, width = 4)
+
+
+#Shannon corrected
+Shannon_corrected<-phyloseq::estimate_richness(ARGs_rgi_corrected, measures = "Shannon")
+metadata<- data.frame(sample_data(ARGs_rgi_corrected)) 
+Shannon_corrected$Timepoint<-metadata$Timepoint
+Shannon_corrected$Group_cutoff_4<-metadata$Group_cutoff_4
+Shannon_corrected$Volunteer<-metadata$Volunteer
+Shannon_corrected$Study<-metadata$Study
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+Shannon_corrected$GroupTime <-metadata$GroupTime 
+pShannon<- ggplot(Shannon_corrected, aes(x = GroupTime, y = Shannon)) +
+  geom_boxplot(aes(fill = Group_cutoff_4), position = position_dodge(width = 0.8), alpha = 0.25) +
+  geom_jitter(aes(color = Study), alpha =1,
+              position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 2.5) +
+  scale_fill_manual(values = c("NR" = "#CC79A7", "R" = "#009E73"), name = "Group cutoff 4") +
+  scale_color_manual(values = c("Spain" = "#E69F00", "UK" = "#0072B2"), name = "Cohort") +
+  theme_minimal() +
+  labs(x = "Group cutoff 4 and Timepoint", y = "Shannon Index")
+pShannon
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Alpha_Div_ARGs_rgi_corrected.pdf", height = 5, width = 4)
+
+
+# Extract OTU table - samples in columns or rows (transpose if needed)
+otu_counts <- as.data.frame(t(otu_table(ARGs_rgi)))
+# Calculate total reads per sample
+total_reads <- rowSums(otu_counts)
+
+# Create data frame and add metadata
+metadata <- data.frame(sample_data(ARGs_rgi))
+total_reads_df <- data.frame(Sample = rownames(metadata), TotalReads = total_reads)
+total_reads_df$Timepoint <- metadata$Timepoint
+total_reads_df$Group_cutoff_4 <- metadata$Group_cutoff_4
+total_reads_df$Volunteer <- metadata$Volunteer
+total_reads_df$Study <- metadata$Study
+
+# Create combined group variable if needed
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+total_reads_df$GroupTime <- metadata$GroupTime
+
+# Plot total reads with ggplot2
+pTotalReads <- ggplot(total_reads_df, aes(x = GroupTime, y = TotalReads)) +
+  geom_boxplot(aes(fill = Group_cutoff_4), position = position_dodge(width = 0.8), alpha = 0.25) +
+  geom_jitter(aes(color = Study), alpha = 1,
+              position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 2.5) +
+  scale_fill_manual(values = c("NR" = "#CC79A7", "R" = "#009E73"), name = "Group cutoff 4") +
+  scale_color_manual(values = c("Spain" = "#E69F00", "UK" = "#0072B2"), name = "Cohort") +
+  theme_minimal() +
+  labs(x = "Group cutoff 4 and Timepoint", y = "Total Reads")
+pTotalReads
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Total_reads_ARGrgi.pdf", height = 5, width = 4)
+
+```
+
+
+```{r comaprisons for significance ARG rgi}
+Shannon<-phyloseq::estimate_richness(ARGs_rgi, measures = "Shannon")
+metadata<- data.frame(sample_data(ARGs_rgi)) 
+Shannon$Timepoint<-metadata$Timepoint
+Shannon$Group_cutoff_4<-metadata$Group_cutoff_4
+Shannon$Volunteer<-metadata$Volunteer
+Shannon$Study<-metadata$Study
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+Shannon$GroupTime <-metadata$GroupTime 
+# Perform t-tests for the specific pairs
+t1 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0"],
+             Shannon$Shannon[Shannon$GroupTime == "NR_T2"])
+t2 <- t.test(Shannon$Shannon[Shannon$GroupTime == "R_T0"],
+             Shannon$Shannon[Shannon$GroupTime == "R_T2"])
+t3<-t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0" & Shannon$Study == "Spain"],
+           Shannon$Shannon[Shannon$GroupTime == "NR_T0" & Shannon$Study == "UK"])
+t4<-t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T2" & Shannon$Study == "Spain"],
+           Shannon$Shannon[Shannon$GroupTime == "NR_T2" & Shannon$Study == "UK"])
+
+t7 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0"],
+             Shannon$Shannon[Shannon$GroupTime == "R_T0"])
+t8 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T2"],
+             Shannon$Shannon[Shannon$GroupTime == "R_T2"])
+
+# Combine results into a data frame for p-value adjustment
+test_results_Sannon <- data.frame(
+  comparison = c("NR_T0 vs NR_T2", "R_T0 vs R_T2", "NR_T0 Spain vs NR_T0 UK", "NR_T2 Spain vs NR_T2 UK", "NR_T0 vs R_T0", "NR_T2 vs R_T2"),
+  p_value = c(t1$p.value, t2$p.value, t3$p.value, t4$p.value, t7$p.value, t8$p.value)
+)
+
+test_results_Sannon$p_adj <- p.adjust(test_results_Sannon$p_value, method = "BH")
+test_results_Sannon$signif <- cut(
+  test_results_Sannon$p_adj,
+  breaks = c(-Inf, 0.001, 0.01, 0.05, Inf),
+  labels = c("***", "**", "*", "")
+)
+
+test_results_Sannon
+#               comparison    p_value     p_adj signif
+#1          NR_T0 vs NR_T2 0.41046022
+#2            R_T0 vs R_T2 0.78698445
+#3 NR_T0 Spain vs NR_T0 UK 0.74853515
+#4 NR_T2 Spain vs NR_T2 UK 0.47956947
+#5           NR_T0 vs R_T0 0.02870324
+#6           NR_T2 vs R_T2 0.26213499
+
+
+Shannon_corrected<-phyloseq::estimate_richness(ARGs_rgi_corrected, measures = "Shannon")
+metadata<- data.frame(sample_data(ARGs_rgi_corrected)) 
+Shannon_corrected$Timepoint<-metadata$Timepoint
+Shannon_corrected$Group_cutoff_4<-metadata$Group_cutoff_4
+Shannon_corrected$Volunteer<-metadata$Volunteer
+Shannon_corrected$Study<-metadata$Study
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+Shannon_corrected$GroupTime <-metadata$GroupTime 
+# Perform t-tests for the specific pairs
+t1 <- t.test(Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "NR_T0"],
+             Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "NR_T2"])
+t2 <- t.test(Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "R_T0"],
+             Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "R_T2"])
+t3<-t.test(Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "NR_T0" & Shannon_corrected$Study == "Spain"],
+           Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "NR_T0" & Shannon_corrected$Study == "UK"])
+t4<-t.test(Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "NR_T2" & Shannon_corrected$Study == "Spain"],
+           Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "NR_T2" & Shannon_corrected$Study == "UK"])
+
+t7 <- t.test(Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "NR_T0"],
+             Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "R_T0"])
+t8 <- t.test(Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "NR_T2"],
+             Shannon_corrected$Shannon[Shannon_corrected$GroupTime == "R_T2"])
+
+# Combine results into a data frame for p-value adjustment
+test_results_Sannon <- data.frame(
+  comparison = c("NR_T0 vs NR_T2", "R_T0 vs R_T2", "NR_T0 Spain vs NR_T0 UK", "NR_T2 Spain vs NR_T2 UK", "NR_T0 vs R_T0", "NR_T2 vs R_T2"),
+  p_value = c(t1$p.value, t2$p.value, t3$p.value, t4$p.value, t7$p.value, t8$p.value)
+)
+
+test_results_Sannon$p_adj <- p.adjust(test_results_Sannon$p_value, method = "BH")
+test_results_Sannon$signif <- cut(
+  test_results_Sannon$p_adj,
+  breaks = c(-Inf, 0.001, 0.01, 0.05, Inf),
+  labels = c("***", "**", "*", "")
+)
+
+test_results_Sannon
+
+#               comparison   p_value     p_adj signif
+#1          NR_T0 vs NR_T2 0.4104602 0.7193542       
+#2            R_T0 vs R_T2 0.7869845 0.7869845       
+#3 NR_T0 Spain vs NR_T0 UK 0.7485351 0.7869845       
+#4 NR_T2 Spain vs NR_T2 UK 0.4795695 0.7193542       
+#5           NR_T0 vs R_T0 0.1161572 0.5226498       
+#6           NR_T2 vs R_T2 0.1742166 0.5226498  
+```
+
+###Barplots
+```{r barplots rgi}
+ARGs_rgi <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ARGs_rgi.Rds")
+
+tax<-as.data.frame(tax_table(ARGs_rgi))
+
+ARGs_rgi<- subset_samples(ARGs_rgi, Group_cutoff_4 %in% c("R", "NR"))
+ARGs_rgi<- subset_samples(ARGs_rgi, Timepoint %in% c("T0", "T2"))
+
+library(dplyr)
+library(stringr)
+
+tax <- tax %>%
+  mutate(Class = case_when(
+    str_detect(`Drug Class`, regex("aminoglycoside", ignore_case = TRUE)) ~ "Aminoglycoside",
+    str_detect(`Drug Class`, regex("rifamycin", ignore_case = TRUE)) ~ "Rifamycin",
+        str_detect(`Drug Class`, regex("tetracycline|minocycline|doxycycline|tigecycline", ignore_case = TRUE)) ~ "Tetracycline",
+    str_detect(`Drug Class`, regex("phenicol", ignore_case = TRUE)) ~ "Amphenicol",
+    str_detect(`Drug Class`, regex("beta-lactam|penam|penem|monobactam|carbapenem|cephalosporin|cephamycin", ignore_case = TRUE)) ~ "Beta-lactam",
+    str_detect(`Drug Class`, regex("diaminopyrimidine|sulfonamide|sulfone|trimethoprim", ignore_case = TRUE)) ~ "Folate pathway antagonist",
+    str_detect(`Drug Class`, regex("glycopeptide", ignore_case = TRUE)) ~ "Glycopeptide",
+    str_detect(`Drug Class`, regex("ionophore", ignore_case = TRUE)) ~ "Ionophore",  # might not appear in your data
+    str_detect(`Drug Class`, regex("lincosamide", ignore_case = TRUE)) ~ "Lincosamide",
+    str_detect(`Drug Class`, regex("macrolide", ignore_case = TRUE)) ~ "Macrolide",
+    str_detect(`Drug Class`, regex("pleuromutilin", ignore_case = TRUE)) ~ "Pleuromutilin",
+    str_detect(`Drug Class`, regex("fluoroquinolone|quinolone", ignore_case = TRUE)) ~ "Quinolone",
+    str_detect(`Drug Class`, regex("streptogramin", ignore_case = TRUE)) ~ "Streptogramin",
+    str_detect(`Drug Class`, regex("nitroimidazole|nitrofuran", ignore_case = TRUE)) ~ "Nitroimidazole",
+    str_detect(`Drug Class`, regex("oxazolidinone|linezolid", ignore_case = TRUE)) ~ "Oxazolidinone",  # rare in this column
+    str_detect(`Drug Class`, regex("fosfomycin", ignore_case = TRUE)) ~ "Fosfomycin",
+    str_detect(`Drug Class`, regex("elfamycin", ignore_case = TRUE)) ~ "Elfamycin",
+    str_detect(`Drug Class`, regex("aminocoumarin", ignore_case = TRUE)) ~ "Aminocoumarin",
+    str_detect(`Drug Class`, regex("acridine dye", ignore_case = TRUE)) ~ "Acridine dye",
+    str_detect(`Drug Class`, regex("triclosan", ignore_case = TRUE)) ~ "Triclosan",
+    str_detect(`Drug Class`, regex("benzalkonium chloride|rhodamine", ignore_case = TRUE)) ~ "Biocide",
+    TRUE ~ "Unclassified"
+  ))
+
+
+library(phyloseq)
+library(ggplot2)
+library(RColorBrewer)
+
+tax$Class[is.na(tax$`Drug Class`)] <- "Unclassified"
+tax$Class2 <- tax$Class
+tax<-tax[,c("Class", "Class2")]
+
+tax_table(ARGs_rgi) <- tax_table(as.matrix(tax))
+
+# Agglomerate at Class level
+ARGs_rgi_Drug_Class <- tax_glom(ARGs_rgi, taxrank = "Class")
+
+# Melt to long format
+df_long <- psmelt(ARGs_rgi_Drug_Class)
+
+
+# Step 1: Calculate mean abundance per group and Class
+df_summary <- df_long %>%
+  group_by(Group_cutoff_4, Class) %>%
+  summarise(Abundance = mean(Abundance), .groups = "drop")
+
+# Step 2: Normalize within each group to make each bar total 100%
+df_summary <- df_summary %>%
+  group_by(Group_cutoff_4) %>%
+  mutate(RelativeAbundance = 100 * Abundance / sum(Abundance)) %>%
+  ungroup()
+
+# Step 3: Reorder categories by total relative abundance (optional)
+top_categories <- names(sort(tapply(df_summary$RelativeAbundance, df_summary$Class, sum), decreasing = TRUE))
+df_summary$Class <- factor(df_summary$Class, levels = top_categories)
+
+# Step 4: Plot
+
+color_palette <- c(
+  "Beta-lactam" = "#0072B2",    
+  "Folate pathway antagonist" = "#56B4E9",     
+  "Lincosamide" = "lightblue",       
+  "Tetracycline" = "#DBA5FF",       
+  "Rifamycin" = "#8B008B",
+  "Quinolone" = "#C8A2C9",    
+  "Aminoglycoside" = "#CC79A7",    
+  "Fosfomycin"= "#F3D3D9",
+  "Amphenicol" = "#D55E00",    
+  "Aminocoumarin" = "#E69F00",        
+  "Acridine dye" = "#F0E442",    
+  "Nitroimidazole" = "#FFFAE5",
+  "Macrolide" = "#DBF3C9", 
+  "Elfamycin" = "#00C04B",
+  "Pleuromutilin" = "#009E73",    
+  "Glycopeptide" = "turquoise",    
+  "Unclassified" = "#999999"       # grey
+)
+ggplot(df_summary, aes(x = Group_cutoff_4, y = RelativeAbundance, fill = Class)) +
+  geom_bar(stat = "identity", position = "stack", alpha = 0.6) +
+  scale_fill_manual(values = color_palette) +
+  theme_classic(base_size = 14) +
+  labs(x = "Group", y = "Relative Abundance (%)", fill = "Class") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ylim(0, 100)
+
+
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Barplots_ARGrgi.pdf", height = 5, width = 4)
+
+
+ggplot(df_summary, aes(x = Group_cutoff_4, y = RelativeAbundance, fill = Class)) +
+  geom_bar(stat = "identity", position = "stack", alpha = 0.8) +
+  theme_classic(base_size = 14) +
+  labs(x = "Group", y = "Relative Abundance (%)", fill = "Class") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ylim(0, 100)
+```
+
+#ARGs ResFinder
+```{r libraries and objects ARGs}
+library("phyloseq"); packageVersion("phyloseq")
+library(readr)
+library(data.table)
+library(ggpubr)
+library(ggrepel)
+library("ggplot2"); packageVersion("ggplot2")
+ARGs_ResFinder <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ARGs_ResFinder.Rds")
+# Remove Volunteer with less than 1 read from phyloseq object
+ARGs_ResFinder<- subset_samples(ARGs_ResFinder, Group_cutoff_4 %in% c("R", "NR"))
+ARGs_ResFinder<- subset_samples(ARGs_ResFinder, Timepoint %in% c("T0", "T2"))
+
+```
+
+```{r ARGs ResFinder Aplha Diversity}
+
+library(ggsignif)
+#Shannon
+Shannon<-phyloseq::estimate_richness(ARGs_ResFinder, measures = "Shannon")
+metadata<- data.frame(sample_data(ARGs_ResFinder)) 
+Shannon$Timepoint<-metadata$Timepoint
+Shannon$Group_cutoff_4<-metadata$Group_cutoff_4
+Shannon$Volunteer<-metadata$Volunteer
+Shannon$Study<-metadata$Study
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+Shannon$GroupTime <-metadata$GroupTime 
+pShannon<- ggplot(Shannon, aes(x = GroupTime, y = Shannon)) +
+  geom_boxplot(aes(fill = Group_cutoff_4), position = position_dodge(width = 0.8), alpha = 0.25) +
+  geom_jitter(aes(color = Study), alpha =1,
+              position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 2.5) +
+  scale_fill_manual(values = c("NR" = "#CC79A7", "R" = "#009E73"), name = "Group cutoff 4") +
+  scale_color_manual(values = c("Spain" = "#E69F00", "UK" = "#0072B2"), name = "Cohort") +
+  theme_minimal() +
+  labs(x = "Group cutoff 4 and Timepoint", y = "Shannon Index")
+pShannon
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Alpha_Div_ARGs_ResFinder.pdf", height = 5, width = 4)
+
+# Extract OTU table - samples in columns or rows (transpose if needed)
+otu_counts <- as.data.frame(t(otu_table(ARGs_ResFinder)))
+# Calculate total reads per sample
+total_reads <- rowSums(otu_counts)
+
+# Create data frame and add metadata
+metadata <- data.frame(sample_data(ARGs_ResFinder))
+total_reads_df <- data.frame(Sample = rownames(metadata), TotalReads = total_reads)
+total_reads_df$Timepoint <- metadata$Timepoint
+total_reads_df$Group_cutoff_4 <- metadata$Group_cutoff_4
+total_reads_df$Volunteer <- metadata$Volunteer
+total_reads_df$Study <- metadata$Study
+
+# Create combined group variable if needed
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+total_reads_df$GroupTime <- metadata$GroupTime
+
+# Plot total reads with ggplot2
+pTotalReads <- ggplot(total_reads_df, aes(x = GroupTime, y = TotalReads)) +
+  geom_boxplot(aes(fill = Group_cutoff_4), position = position_dodge(width = 0.8), alpha = 0.25) +
+  geom_jitter(aes(color = Study), alpha = 1,
+              position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 2.5) +
+  scale_fill_manual(values = c("NR" = "#CC79A7", "R" = "#009E73"), name = "Group cutoff 4") +
+  scale_color_manual(values = c("Spain" = "#E69F00", "UK" = "#0072B2"), name = "Cohort") +
+  theme_minimal() +
+  labs(x = "Group cutoff 4 and Timepoint", y = "Total Reads")
+pTotalReads
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Total_reads_ARGResFinder.pdf", height = 5, width = 4)
+
+```
+
+
+```{r comaprisons for significance ARG ResFinder}
+Shannon<-phyloseq::estimate_richness(ARGs_ResFinder, measures = "Shannon")
+metadata<- data.frame(sample_data(ARGs_ResFinder)) 
+Shannon$Timepoint<-metadata$Timepoint
+Shannon$Group_cutoff_4<-metadata$Group_cutoff_4
+Shannon$Volunteer<-metadata$Volunteer
+Shannon$Study<-metadata$Study
+metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
+Shannon$GroupTime <-metadata$GroupTime 
+# Perform t-tests for the specific pairs
+t1 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0"],
+             Shannon$Shannon[Shannon$GroupTime == "NR_T2"])
+t2 <- t.test(Shannon$Shannon[Shannon$GroupTime == "R_T0"],
+             Shannon$Shannon[Shannon$GroupTime == "R_T2"])
+t3<-t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0" & Shannon$Study == "Spain"],
+           Shannon$Shannon[Shannon$GroupTime == "NR_T0" & Shannon$Study == "UK"])
+t4<-t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T2" & Shannon$Study == "Spain"],
+           Shannon$Shannon[Shannon$GroupTime == "NR_T2" & Shannon$Study == "UK"])
+
+t7 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0"],
+             Shannon$Shannon[Shannon$GroupTime == "R_T0"])
+t8 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T2"],
+             Shannon$Shannon[Shannon$GroupTime == "R_T2"])
+
+# Combine results into a data frame for p-value adjustment
+test_results_Shannon <- data.frame(
+  comparison = c("NR_T0 vs NR_T2", "R_T0 vs R_T2", "NR_T0 Spain vs NR_T0 UK", "NR_T2 Spain vs NR_T2 UK", "NR_T0 vs R_T0", "NR_T2 vs R_T2"),
+  p_value = c(t1$p.value, t2$p.value, t3$p.value, t4$p.value, t7$p.value, t8$p.value)
+)
+
+test_results_Shannon$p_adj <- p.adjust(test_results_Shannon$p_value, method = "BH")
+test_results_Shannon$signif <- cut(
+  test_results_Shannon$p_adj,
+  breaks = c(-Inf, 0.001, 0.01, 0.05, Inf),
+  labels = c("***", "**", "*", "")
+)
+
+test_results_Shannon
+#               comparison     p_value      p_adj signif
+#1          NR_T0 vs NR_T2 0.800496365 0.80049636       
+#2            R_T0 vs R_T2 0.364881862 0.43785823       
+#3 NR_T0 Spain vs NR_T0 UK 0.043915096 0.08645747       
+#4 NR_T2 Spain vs NR_T2 UK 0.057638316 0.08645747       
+#5           NR_T0 vs R_T0 0.004644741 0.02786844      *
+#6           NR_T2 vs R_T2 0.010484151 0.03145245      *
+```
+
+###Barplots
+```{r barplots ResFinder}
+ARGs_ResFinder <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ARGs_ResFinder.Rds")
+tax<-as.data.frame(tax_table(ARGs_ResFinder))
+ARGs_ResFinder<- subset_samples(ARGs_ResFinder, Group_cutoff_4 %in% c("R", "NR"))
+ARGs_ResFinder<- subset_samples(ARGs_ResFinder, Timepoint %in% c("T0", "T2"))
+
+
+library(dplyr)
+library(stringr)
+
+tax <- tax %>%
+  mutate(Class = case_when(
+    str_detect(Phenotype, regex("amikacin|gentamicin|streptomycin|kanamycin|tobramycin|netilmicin|neomycin|dibekacin|sisomicin|spectinomycin", ignore_case = TRUE)) ~ "Aminoglycoside",
+    str_detect(Phenotype, regex("chloramphenicol|florfenicol", ignore_case = TRUE)) ~ "Amphenicol",
+    str_detect(Phenotype, regex("amoxicillin|ampicillin|cefotaxime|cefoxitin|ceftazidime|piperacillin|ticarcillin|beta-lactam", ignore_case = TRUE)) ~ "Beta-lactam",
+    str_detect(Phenotype, regex("trimethoprim|sulfamethoxazole", ignore_case = TRUE)) ~ "Folate pathway antagonist",
+    str_detect(Phenotype, regex("vancomycin", ignore_case = TRUE)) ~ "Glycopeptide",
+    str_detect(Phenotype, regex("salinomycin|narasin|maduramicin", ignore_case = TRUE)) ~ "Ionophore",
+    str_detect(Phenotype, regex("lincomycin|clindamycin", ignore_case = TRUE)) ~ "Lincosamide",
+    str_detect(Phenotype, regex("erythromycin|azithromycin|spiramycin|telithromycin", ignore_case = TRUE)) ~ "Macrolide",
+    str_detect(Phenotype, regex("tiamulin", ignore_case = TRUE)) ~ "Pleuromutilin",
+    str_detect(Phenotype, regex("ciprofloxacin|nalidixic acid|fluoroquinolone", ignore_case = TRUE)) ~ "Quinolone",
+    str_detect(Phenotype, regex("pristinamycin IA|quinupristin", ignore_case = TRUE)) ~ "Streptogramin A",
+    str_detect(Phenotype, regex("virginiamycin S|virginiamycin M|pristinamycin IIA", ignore_case = TRUE)) ~ "Streptogramin B",
+    str_detect(Phenotype, regex("tetracycline|minocycline|doxycycline|tigecycline", ignore_case = TRUE)) ~ "Tetracycline",
+    str_detect(Phenotype, regex("metronidazole", ignore_case = TRUE)) ~ "Nitroimidazole",
+    str_detect(Phenotype, regex("linezolid", ignore_case = TRUE)) ~ "Oxazolidinone",
+    str_detect(Phenotype, regex("rifampin|rifampicin|rifabutin|rifaximin", ignore_case = TRUE)) ~ "Rifamycin",
+    TRUE ~ "Unclassified"
+  ))
+
+tax$Class[is.na(tax$Phenotype)] <- "Unclassified"
+tax$Class2 <- tax$Class
+tax$Phenotype<-NULL
+tax$`Resistance gene`<-NULL
+
+
+tax_table(ARGs_ResFinder) <- tax_table(as.matrix(tax))
+
+library(phyloseq)
+library(ggplot2)
+library(RColorBrewer)
+
+# Agglomerate at Phenotype level
+ARGs_ResFinder_Drug_Class <- tax_glom(ARGs_ResFinder, taxrank = "Class")
+
+# Melt to long format
+df_long <- psmelt(ARGs_ResFinder_Drug_Class)
+
+
+# Step 1: Calculate mean abundance per group and Class
+df_summary <- df_long %>%
+  group_by(Group_cutoff_4, Class) %>%
+  summarise(Abundance = mean(Abundance), .groups = "drop")
+
+# Step 2: Normalize within each group to make each bar total 100%
+df_summary <- df_summary %>%
+  group_by(Group_cutoff_4) %>%
+  mutate(RelativeAbundance = 100 * Abundance / sum(Abundance)) %>%
+  ungroup()
+
+# Step 3: Reorder categories by total relative abundance (optional)
+top_categories <- names(sort(tapply(df_summary$RelativeAbundance, df_summary$Class, sum), decreasing = TRUE))
+df_summary$Class <- factor(df_summary$Class, levels = top_categories)
+
+# Step 4: Plot
+
+color_palette <- c(
+  "Beta-lactam" = "#0072B2",    # dark blue
+  "Tetracycline" = "#56B4E9",     # light blue 
+  "Lincosamide" = "lightblue",     # light blue   
+  "Aminoglycoside" = "#DBA5FF",    # yellow 
+  "Amphenicol" = "#CC79A7",    # pink
+  "Macrolide" = "#D55E00",    # dark orange 
+  "Folate pathway antagonist" = "#E69F00",        # orange 
+  "Nitroimidazole" = "#F0E442",    # green
+  "Quinolone" = "lightgreen",    # light green
+  "Ionophore" = "#009E73",    # light green
+  "Glycopeptide" = "turquoise",    # light light blue
+  "Unclassified" = "#999999"       # grey
+)
+ggplot(df_summary, aes(x = Group_cutoff_4, y = RelativeAbundance, fill = Class)) +
+  geom_bar(stat = "identity", position = "stack", alpha = 0.6) +
+  scale_fill_manual(values = color_palette) +
+  theme_classic(base_size = 14) +
+  labs(x = "Group", y = "Relative Abundance (%)", fill = "Class") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ylim(0, 100)
+
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Barplots_ARGresf.pdf", height = 5, width = 4)
+
+ggplot(df_summary, aes(x = Group_cutoff_4, y = RelativeAbundance, fill = Class)) +
+  geom_bar(stat = "identity", position = "stack", alpha = 0.8) +
+  theme_classic(base_size = 14) +
+  labs(x = "Group", y = "Relative Abundance (%)", fill = "Class") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ylim(0, 100)
+
+```

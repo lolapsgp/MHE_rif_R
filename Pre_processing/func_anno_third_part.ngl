@@ -1,0 +1,76 @@
+#Functional anotation
+ngless "1.5"
+local import "gmgc" version "1.0"
+import "parallel" version "1.1"
+import "samtools" version "1.0"
+
+samples = readlines('list_of_sample.txt') 
+current = lock1(samples)
+filtered_reads = paired("outputs/" + current + ".pair.1.fq.gz", "outputs/" + current + ".pair.2.fq.gz")
+
+#Global Microbial Gene Catalog v1.0
+gmgc_mapped = map (filtered_reads, reference='gmgc:human-gut', mode_all=True, block_size_megabases=10000)
+gmgc_mapped_post = select(gmgc_mapped) using |mr|:
+    mr = mr.filter(min_match_size=45, min_identity_pc=95, action={drop})
+    if not mr.flag({mapped}):
+        discard
+
+#eggNOG_OGs
+counts = count(gmgc_mapped_post,
+            features=['eggNOG_OGs'],
+            normalization={fpkm},
+            multiple={all1},
+            discard_zeros=True)
+
+collect(counts,
+        current=current,
+        allneeded=samples,
+        ofile='eggNOG_fpkm.profiles.txt')
+
+#CAZY
+counts = count(gmgc_mapped_post,
+            features=['CAZy'],
+            normalization={raw},
+            multiple={all1},
+            discard_zeros=True)
+
+collect(counts,
+        current=current,
+        allneeded=samples,
+        ofile='CAZY_raw.profiles.txt')
+
+
+counts = count(gmgc_mapped_post,
+            features=['CAZy'],
+            normalization={fpkm},
+            multiple={all1},
+            discard_zeros=True)
+
+collect(counts,
+        current=current,
+        allneeded=samples,
+        ofile='CAZY_fpkm.profiles.txt')
+
+#KEGG with dist=1
+counts = count(gmgc_mapped_post,
+            features=['KEGG_ko'],
+            normalization={raw},
+            multiple={dist1},
+            discard_zeros=True)
+
+collect(counts,
+        current=current,
+        allneeded=samples,
+        ofile='KEGG_dist1_raw.profiles.txt')
+
+
+counts = count(gmgc_mapped_post,
+            features=['KEGG_ko'],
+            normalization={fpkm},
+            multiple={dist1},
+            discard_zeros=True)
+
+collect(counts,
+        current=current,
+        allneeded=samples,
+        ofile='KEGG_dist1_fpkm.profiles.txt')

@@ -1,0 +1,113 @@
+---
+title: "1_preprocessing"
+author: "Lola Giner Perez"
+date: "8/6/2024"
+output: html_document
+---
+```{r libraries}
+library(phyloseq)
+library(decontam)
+library(tidyverse)
+library(DT)
+library(ggplot2); packageVersion("ggplot2")
+```
+
+#Identify Contaminants - Frequency
+```{r Phyloseq}
+ps_raw_metaphlan <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/metaphlan/ps_raw_metaphlan.Rds") 
+df <- as.data.frame(sample_data(ps_raw_metaphlan)) # Put sample_data into a ggplot-friendly data.frame
+df$LibrarySize <- sample_sums(ps_raw_metaphlan)
+df <- df[order(df$LibrarySize),]
+df$Index <- seq(nrow(df))
+ggplot(data=df, aes(x=Index, y=LibrarySize, color=Group_cutoff_4)) + geom_point()
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/metaphlan/Figures/contaminants_freq1.pdf")
+
+contamdf.freq <- isContaminant(ps_raw_metaphlan, method="frequency", conc="Cantidad.de.DNA.total..ng.uL.")
+head(contamdf.freq)
+saveRDS(contamdf.freq, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/metaphlan/contaminant_table.Rds")
+table(contamdf.freq$contaminant)
+which(contamdf.freq$contaminant)
+```
+129 131 146 169 219 232 280 485 668 682
+
+We have no negative control because it did not have enough DNA for sequencing, we cannot use Prevalence method.
+
+The dashed black line of the plots shows the model of a noncontaminant sequence feature for which frequency is expected to be independent of the input DNA concentration. The red line shows the model of a contaminant sequence feature, for which frequency is expected to be inversely proportional to input DNA concentration, as contaminating DNA will make up a larger fraction of the total DNA in samples with very little total DNA. 
+```{r plots}
+set.seed(321)
+plot_frequency(ps_raw_metaphlan, taxa_names(ps_raw_metaphlan)[c(129, 131, 146, 169, 219, 232, 280, 485, 668, 682)], conc="Cantidad.de.DNA.total..ng.uL.") + 
+    xlab("DNA Concentration measured by Qubit")
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/metaphlan/Figures/contaminants_freq2.pdf")
+View(tax_table(ps_raw_metaphlan)[c(129, 131, 146, 169, 219, 232, 280, 485, 668, 682)])
+```
+
+Now that we have identified likely contaminants, let’s remove them from the phyloseq object:
+#```{r phyloseq 2}
+#ps.noncontamfreq <- prune_taxa(!contamdf.freq$contaminant, ps)
+#ps.noncontamfreq
+#saveRDS(ps.noncontamfreq, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/metaphlan/ps.noncontamfreq.Rds")  
+#```
+
+Using the information that the decontam package gave me, I took the tax tables of what had been identified as contaminants and I made a deep search on the habitats of these taxa. Finally, I selected wich ones were correctly identifies as contaminants and now we will create a phyloseq object without the contaminant taxa.  
+```{r phyloseq ok}
+contaminants<-c("SGB29328", "SGB4053")
+goodTaxa <- setdiff(taxa_names(ps_raw_metaphlan), contaminants)
+ps.noncontam <- prune_taxa(goodTaxa, ps_raw_metaphlan)
+ps.noncontam
+saveRDS(ps.noncontam, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/metaphlan/ps.noncontam.Rds")  
+```
+
+#Taxa filtering: Remove low prevalent taxa
+When you use MetaPhlAn, you are analyzing relative abundances, not raw read counts. The output profile from MetaPhlAn reports normalized values that represent the fraction of reads attributed to each taxonomic clade, scaled so that the total across all taxa sums to 100% .
+
+```{r tree plot}
+library(microbiome)
+phylo_phylum <- tax_glom(ps.noncontam, taxrank = "Phylum")
+df <- psmelt(phylo_phylum)
+
+
+ggplot(df, aes(x = Sample, y = Abundance, fill = Phylum)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~Phylum, scales = "free_x") +
+  xlab("Samples") +
+  ylab("Relative Abundance (%)")+
+  geom_hline(yintercept = 2.5) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/metaphlan/Figures/filter_data1.pdf")
+
+#Remove low prevalent mOTUs (This data is used for differential abundance analysis)
+metadata<- data.frame(sample_data(ps.noncontam)) 
+data<-data.frame(sample_data(ps.noncontam))
+samples<-data$SampleID
+samples <- gsub("_[0-9]", "", samples)
+data$samples<-samples
+sample_data(ps.noncontam)<-data
+
+sample_data <- sample_data(ps.noncontam)
+sample_data$samples <- as.factor(sample_data$samples)
+
+##Remove species that do not have more than 0.5% of relative abundance  
+wh0 <- genefilter_sample(ps.noncontam, filterfun_sample(function(x) x > 0.5), A=0.01*nsamples(ps.noncontam))
+
+# Create a logical vector for motus present in at least 3 volunteers (30% 3 out of 10)
+asv_volunteer_filter <- apply(otu_table(ps.noncontam), 1, function(asv_counts) {
+  # Find which volunteers have non-zero counts for this motu
+  volunteers_with_asv <- unique(sample_data$samples[asv_counts > 0])
+  # Check if motu is present in at least 3 volunteers
+  length(volunteers_with_asv) >= 3
+})
+
+# Combine both filters
+combined_filter <- wh0 & asv_volunteer_filter #Removing low prev taxa by % and if not present in at least 3/10 (30%) volunteers
+
+ps_filtered <- prune_taxa(combined_filter, ps.noncontam)
+
+
+pdf("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/metaphlan/Figures/filter_data2.pdf")
+hist(readcount(ps_filtered))
+dev.off()
+saveRDS(ps_filtered, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/metaphlan/ps_filtered.Rds")
+```
+

@@ -1,0 +1,20 @@
+#Contigs
+ngless "1.5"
+
+import "parallel" version "1.1"
+import "samtools" version "1.0"
+
+# Read the list of sample names
+# Lock one sample at a time (parallel-safe)
+# Load the filtered paired-end reads (from previous QC and host removal)
+samples = readlines('list_of_sample.txt') 
+current = lock1(samples)
+filtered_reads = paired("outputs/" + current + ".pair.1.fq.gz", "outputs/" + current + ".pair.2.fq.gz")
+
+
+# Run MEGAHIT assembly
+contigs = assemble(filtered_reads)
+write(contigs, ofile= "Assembly/assembled_contigs/" + current+".contigs.fasta")
+write(contigs, ofile='Assembly/assembled_contigs/contigs.fna')
+
+

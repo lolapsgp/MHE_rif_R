@@ -1,0 +1,25 @@
+---
+title: "2_merge_Spain_and_UK_db"
+output: html_document
+date: "2025-05-05"
+---
+
+#Merge Valencia and UK
+```{r load data}
+library(phyloseq)
+ps_raw_metaphlan <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/metaphlan/ps_raw_metaphlan.Rds")
+ps_raw_Patel_met <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/metaphlan/ps_raw_Patel_met.Rds")
+
+ps_merged_raw_met <- merge_phyloseq(ps_raw_metaphlan, ps_raw_Patel_met)
+
+saveRDS(ps_merged_raw_met, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ps_merged_raw_met.Rds")
+
+
+ps_filtered_Spain <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/metaphlan/ps_filtered.Rds") 
+ps_UKfiltered <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/metaphlan/ps_UKfiltered.Rds") 
+
+ps_merged_filtered_met <- merge_phyloseq(ps_filtered_Spain, ps_UKfiltered)
+
+saveRDS(ps_merged_filtered_met, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ps_merged_filtered_met.Rds")
+
+```

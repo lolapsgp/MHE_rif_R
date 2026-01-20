@@ -1,0 +1,21 @@
+#Functional anotation
+ngless "1.5"
+import "parallel" version "1.1"
+import "samtools" version "1.0"
+
+samples = readlines("list_of_sample_ok.txt")
+sample = lock1(samples)
+reads = paired("outputs/" + sample + "filtered.pair.1.fq.gz", "outputs/" + sample + "filtered.pair.2.fq.gz")
+
+# Map reads to contigs
+mapped = map(reads, reference="/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/Assembly/assembled_filtered_contigs/" + sample + "filtered.fcontigs.fasta")
+
+# Optional filtering (low-quality alignments)
+mapped = select(mapped) using |m|:
+    m = m.filter(min_match_size=20, min_identity_pc=90)
+    if not m.flag({mapped}):
+        discard
+
+#Convert to BAM
+write(mapped, ofile="Assembly/mapped_reads/" + sample + ".bam")
+

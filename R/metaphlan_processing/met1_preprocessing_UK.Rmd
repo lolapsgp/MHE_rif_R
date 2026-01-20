@@ -1,0 +1,80 @@
+---
+title: "1_preprocessing_Patel"
+author: "Lola Giner Perez"
+date: "8/6/2024"
+output: html_document
+---
+```{r libraries}
+library(phyloseq)
+library(decontam)
+library(tidyverse)
+library(DT)
+library(ggplot2); packageVersion("ggplot2")
+```
+
+#Identify Contaminants - Frequency
+```{r Phyloseq}
+ps_UKraw_metaphlan <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/metaphlan/ps_raw_Patel_met.Rds") 
+df <- as.data.frame(sample_data(ps_UKraw_metaphlan)) # Put sample_data into a ggplot-friendly data.frame
+df$LibrarySize <- sample_sums(ps_UKraw_metaphlan)
+df <- df[order(df$LibrarySize),]
+df$Index <- seq(nrow(df))
+ggplot(data=df, aes(x=Index, y=LibrarySize, color=Group_cutoff_4)) + geom_point()
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/metaphlan/Figures/contaminants_freq1UK.pdf")
+
+```
+
+
+#Taxa filtering: Remove low prevalent taxa
+When you use MetaPhlAn, you are analyzing relative abundances, not raw read counts. The output profile from MetaPhlAn reports normalized values that represent the fraction of reads attributed to each taxonomic clade, scaled so that the total across all taxa sums to 100% .
+
+```{r tree plot}
+library(microbiome)
+phylo_phylum <- tax_glom(ps_UKraw_metaphlan, taxrank = "Phylum")
+df <- psmelt(phylo_phylum)
+
+
+ggplot(df, aes(x = Sample, y = Abundance, fill = Phylum)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~Phylum, scales = "free_x") +
+  xlab("Samples") +
+  ylab("Relative Abundance (%)")+
+  geom_hline(yintercept = 2.5) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/metaphlan/Figures/filter_data1UK.pdf")
+
+#Remove low prevalent mOTUs (This data is used for differential abundance analysis)
+metadata<- data.frame(sample_data(ps_UKraw_metaphlan)) 
+data<-data.frame(sample_data(ps_UKraw_metaphlan))
+samples<-data$SampleID
+samples <- gsub("_[0-9]", "", samples)
+data$samples<-samples
+sample_data(ps_UKraw_metaphlan)<-data
+
+sample_data <- sample_data(ps_UKraw_metaphlan)
+sample_data$samples <- as.factor(sample_data$samples)
+
+##Remove species that do not have more than 0.5% of relative abundance  
+wh0 <- genefilter_sample(ps_UKraw_metaphlan, filterfun_sample(function(x) x > 0.5), A=0.01*nsamples(ps_UKraw_metaphlan))
+
+# Create a logical vector for motus present in at least 3 volunteers (30% 3 out of 10)
+asv_volunteer_filter <- apply(otu_table(ps_UKraw_metaphlan), 1, function(asv_counts) {
+  # Find which volunteers have non-zero counts for this motu
+  volunteers_with_asv <- unique(sample_data$samples[asv_counts > 0])
+  # Check if motu is present in at least 3 volunteers
+  length(volunteers_with_asv) >= 3
+})
+
+# Combine both filters
+combined_filter <- wh0 & asv_volunteer_filter #Removing low prev taxa by % and if not present in at least 3/10 (30%) volunteers
+
+ps_UKfiltered <- prune_taxa(combined_filter, ps_UKraw_metaphlan)
+
+
+pdf("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/metaphlan/Figures/filter_data2UK.pdf")
+hist(readcount(ps_UKfiltered))
+dev.off()
+saveRDS(ps_UKfiltered, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/metaphlan/ps_UKfiltered.Rds")
+```

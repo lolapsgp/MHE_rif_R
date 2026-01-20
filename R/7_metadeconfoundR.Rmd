@@ -1,0 +1,1987 @@
+---
+title: "7_metadeconfoundR"
+output: html_document
+date: "2025-09-23"
+---
+
+```{r libraries and objects}
+library(phyloseq)
+library(metadeconfoundR)
+library(dplyr)
+library(microbiome)
+pacman::p_load(tidyverse, phyloseq, microbiome, knitr, lubridate, ggplotify, gtools, ggplot2, ggpubr, microViz, metadeconfoundR)
+
+
+#Batch effect corrrected and clr-transformed
+ps_clr_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ps_clr_corrected.Rds")
+GMMs_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/GMMs_corrected.Rds")
+ARGs_ok_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ARGs_ok_corrected.Rds")
+```
+
+#Rename taxa
+```{r Changing names mOTUs}
+library(tidyr)
+library(tibble)
+library(purrr)
+require(phyloseq)
+require(tidyverse)
+require(magrittr)
+
+
+get_latest_annotation <- function(phyloseq_obj) {
+  tax_table <- phyloseq_obj@tax_table %>%
+    as.data.frame() %>%
+    rownames_to_column('ASV') %>%
+    as_tibble() %>%
+    tidyr::gather('Rank', 'Value', -ASV) %>%
+    nest(data = -ASV) %>%
+    mutate(TaxaID = map_chr(data, function(x) {
+      x %>%
+        dplyr::filter(!is.na(Value)) %>%
+        magrittr::use_series(Value) %>%
+        tail(1)
+    })) %>%
+    mutate(TaxaUp = map_chr(data, function(x) {
+      x %>%
+        dplyr::filter(!is.na(Value)) %>%
+        magrittr::use_series(Value) %>%
+        tail(2) %>% head(1)
+    })) %>%
+    mutate(TaxaID = paste(ASV, TaxaID)) %>%
+    dplyr::select(-c(data, TaxaUp))
+  
+  return(tax_table)
+}
+
+
+```
+
+
+#mOTUs Responders: T2 vs T0
+```{r MetadeconfoundR T2 vs T0 all }
+ps_Responders_Timepoint<- subset_samples(ps_clr_corrected, Group_cutoff_4 %in% c("R"))
+ps_Responders_Timepoint <-subset_samples(ps_Responders_Timepoint, Timepoint %in% c("T0", "T2"))
+
+
+metadata_Responders_Timepoint<-data.frame(sample_data(ps_Responders_Timepoint))
+
+#Since there are no confounded associations, I will only keep variables of interest
+metadata_Responders_Timepoint <- metadata_Responders_Timepoint %>% 
+  mutate(Timepoint_Responders_T2vsT0 = ifelse(Timepoint == "T2", 1, 0))%>% 
+  mutate(Study = ifelse(Study == "Spain", 1, 0))
+metadata_Responders_Timepoint <- metadata_Responders_Timepoint%>%
+  select(Timepoint_Responders_T2vsT0, Study)
+
+# run metadeconfoundR
+features <- as.data.frame(otu_table(ps_Responders_Timepoint))
+
+##Instead of using only one taxa, I use the function created by Victor to asign the name of the taxa by the last annotation in the tax table
+latest_annotations <- get_latest_annotation(ps_Responders_Timepoint)
+latest_annotations<-as.data.frame(latest_annotations)
+
+
+#create two-column-dataframe containing corresponding "human-readable" names to the "machine-readable" feature names used as row.names in metaDeconfOutput.  
+taxtable <- latest_annotations
+taxtable$ASV <- row.names(taxtable)
+taxtable<- cbind(ASV=taxtable$ASV,subset(taxtable,select = -c(ASV)))
+
+features <- as.data.frame(t(features))
+### run it
+metad <- MetaDeconfound(featureMat = features, metaMat = metadata_Responders_Timepoint, randomVar = "Study")
+
+raw_p_Responders_Timepoint <- metad[1]
+corr_p_Responders_Timepoint <- metad[2]
+effect_size_Responders_Timepoint <- metad[3]
+status_Responders_Timepoint <- metad[4]
+```
+
+#mOTUs Non-responders: T2 vs T0
+```{r MetadeconfoundR T2 vs T0 NR}
+ps_NR_Timepoint<- subset_samples(ps_clr_corrected, Group_cutoff_4 %in% c("NR"))
+ps_NR_Timepoint <-subset_samples(ps_NR_Timepoint, Timepoint %in% c("T0", "T2"))
+
+
+metadata_NR_Timepoint<-data.frame(sample_data(ps_NR_Timepoint))
+
+metadata_NR_Timepoint <- metadata_NR_Timepoint %>% 
+  mutate(Timepoint_NR_T2vsT0 = ifelse(Timepoint == "T2", 1, 0))%>% 
+  mutate(Study = ifelse(Study == "Spain", 1, 0))%>%
+  select(Timepoint_NR_T2vsT0,Study)
+
+
+# run metadeconfoundR
+features <- as.data.frame(otu_table(ps_NR_Timepoint))
+
+##Instead of using only one taxa, I use the function created by Victor to asign the name of the taxa by the last annotation in the tax table
+latest_annotations <- get_latest_annotation(ps_NR_Timepoint)
+latest_annotations<-as.data.frame(latest_annotations)
+
+
+#create two-column-dataframe containing corresponding "human-readable" names to the "machine-readable" feature names used as row.names in metaDeconfOutput.  
+taxtable <- latest_annotations
+taxtable$ASV <- row.names(taxtable)
+taxtable<- cbind(ASV=taxtable$ASV,subset(taxtable,select = -c(ASV)))
+
+features <- as.data.frame(t(features))
+### run it
+metad <- MetaDeconfound(featureMat = features, metaMat = metadata_NR_Timepoint,
+                        randomVar = "Study")
+
+raw_p_NR_Timepoint <- metad[1]
+corr_p_NR_Timepoint <- metad[2]
+effect_size_NR_Timepoint <- metad[3]
+status_NR_Timepoint <- metad[4]
+```
+
+
+
+#mOTUs T0: R vs NR
+```{r MetadeconfoundR R vs NR T0}
+ps_T0_Group<- subset_samples(ps_clr_corrected, Timepoint%in% c("T0"))
+ps_T0_Group <-subset_samples(ps_T0_Group, Group_cutoff_4 %in% c("NR", "R"))
+
+
+metadata_T0_Group<-data.frame(sample_data(ps_T0_Group))
+
+metadata_T0_Group <- metadata_T0_Group %>% 
+  mutate(Group_T0_RvsNR = ifelse(Group_cutoff_4 == "R", 1, 0))%>% 
+  mutate(Study = ifelse(Study == "Spain", 1, 0))%>%
+  select(Group_T0_RvsNR,Study)
+
+
+# run metadeconfoundR
+features <- as.data.frame(otu_table(ps_T0_Group))
+
+##Instead of using only one taxa, I use the function created by Victor to asign the name of the taxa by the last annotation in the tax table
+latest_annotations <- get_latest_annotation(ps_T0_Group)
+latest_annotations<-as.data.frame(latest_annotations)
+
+
+#create two-column-dataframe containing corresponding "human-readable" names to the "machine-readable" feature names used as row.names in metaDeconfOutput.  
+taxtable <- latest_annotations
+taxtable$ASV <- row.names(taxtable)
+taxtable<- cbind(ASV=taxtable$ASV,subset(taxtable,select = -c(ASV)))
+
+features <- as.data.frame(t(features))
+### run it
+metad <- MetaDeconfound(featureMat = features, metaMat = metadata_T0_Group,
+                        randomVar = "Study")
+
+raw_p_T0_Group <- metad[1]
+corr_p_T0_Group <- metad[2]
+effect_size_T0_Group <- metad[3]
+status_T0_Group <- metad[4]
+```
+
+
+#mOTUs T2: R vs NR
+```{r MetadeconfoundR R vs NR T2}
+ps_T2_Group<- subset_samples(ps_clr_corrected, Timepoint%in% c("T2"))
+ps_T2_Group <-subset_samples(ps_T2_Group, Group_cutoff_4 %in% c("NR", "R"))
+
+
+metadata_T2_Group<-data.frame(sample_data(ps_T2_Group))
+
+metadata_T2_Group <- metadata_T2_Group %>% 
+  mutate(Group_T2_RvsNR = ifelse(Group_cutoff_4 == "R", 1, 0))%>% 
+  mutate(Study = ifelse(Study == "Spain", 1, 0))%>%
+  select(Group_T2_RvsNR, Study)
+
+
+# run metadeconfoundR
+features <- as.data.frame(otu_table(ps_T2_Group))
+
+##Instead of using only one taxa, I use the function created by Victor to asign the name of the taxa by the last annotation in the tax table
+latest_annotations <- get_latest_annotation(ps_T2_Group)
+latest_annotations<-as.data.frame(latest_annotations)
+
+
+#create two-column-dataframe containing corresponding "human-readable" names to the "machine-readable" feature names used as row.names in metaDeconfOutput.  
+taxtable <- latest_annotations
+taxtable$ASV <- row.names(taxtable)
+taxtable<- cbind(ASV=taxtable$ASV,subset(taxtable,select = -c(ASV)))
+
+features <- as.data.frame(t(features))
+### run it
+metad <- MetaDeconfound(featureMat = features, metaMat = metadata_T2_Group,
+                        randomVar = "Study")
+
+raw_p_T2_Group <- metad[1]
+corr_p_T2_Group <- metad[2]
+effect_size_T2_Group <- metad[3]
+status_T2_Group <- metad[4]
+```
+
+
+#mOTUs Group: R vs NR
+```{r MetadeconfoundR R vs NR all}
+ps_Group<- subset_samples(ps_clr_corrected, Timepoint%in% c("T0","T2"))
+ps_Group <-subset_samples(ps_Group, Group_cutoff_4 %in% c("NR", "R"))
+
+
+metadata_Group<-data.frame(sample_data(ps_Group))
+
+metadata_Group <- metadata_Group %>% 
+  mutate(Group_all_RvsNR = ifelse(Group_cutoff_4 == "R", 1, 0))%>% 
+  mutate(Study = ifelse(Study == "Spain", 1, 0))%>%
+  select(Group_all_RvsNR, Study, Volunteer)
+
+
+# run metadeconfoundR
+features <- as.data.frame(otu_table(ps_Group))
+
+##Instead of using only one taxa, I use the function created by Victor to asign the name of the taxa by the last annotation in the tax table
+latest_annotations <- get_latest_annotation(ps_Group)
+latest_annotations<-as.data.frame(latest_annotations)
+
+
+#create two-column-dataframe containing corresponding "human-readable" names to the "machine-readable" feature names used as row.names in metaDeconfOutput.  
+taxtable <- latest_annotations
+taxtable$ASV <- row.names(taxtable)
+taxtable<- cbind(ASV=taxtable$ASV,subset(taxtable,select = -c(ASV)))
+
+features <- as.data.frame(t(features))
+### run it
+metad <- MetaDeconfound(featureMat = features, metaMat = metadata_Group,
+                        randomVar = c("Study", "Volunteer"))
+
+raw_p_Group_Group <- metad[1]
+corr_p_Group_Group <- metad[2]
+effect_size_Group_Group <- metad[3]
+status_Group_Group <- metad[4]
+```
+
+#mOTUs Timepoint: T2 vs T0
+```{r MetadeconfoundR T2 vs T0 all}
+ps_Timepoint<- subset_samples(ps_clr_corrected, Timepoint%in% c("T0","T2"))
+ps_Timepoint <-subset_samples(ps_Timepoint, Group_cutoff_4 %in% c("NR", "R"))
+
+
+metadata_Timepoint<-data.frame(sample_data(ps_Timepoint))
+
+metadata_Timepoint <- metadata_Timepoint %>% 
+  mutate(Timepoint_all_T2vsT0 = ifelse(Timepoint == "T2", 1, 0))%>% 
+  mutate(Study = ifelse(Study == "Spain", 1, 0))%>%
+  select(Timepoint_all_T2vsT0, Study)
+
+
+# run metadeconfoundR
+features <- as.data.frame(otu_table(ps_Timepoint))
+
+##Instead of using only one taxa, I use the function created by Victor to asign the name of the taxa by the last annotation in the tax table
+latest_annotations <- get_latest_annotation(ps_Timepoint)
+latest_annotations<-as.data.frame(latest_annotations)
+
+
+#create two-column-dataframe containing corresponding "human-readable" names to the "machine-readable" feature names used as row.names in metaDeconfOutput.  
+taxtable <- latest_annotations
+taxtable$ASV <- row.names(taxtable)
+taxtable<- cbind(ASV=taxtable$ASV,subset(taxtable,select = -c(ASV)))
+
+features <- as.data.frame(t(features))
+### run it
+metad <- MetaDeconfound(featureMat = features, metaMat = metadata_Timepoint,
+                        randomVar = c("Study"))
+
+raw_p_Timepoint_Timepoint <- metad[1]
+corr_p_Timepoint_Timepoint <- metad[2]
+effect_size_Timepoint_Timepoint <- metad[3]
+status_Timepoint_Timepoint <- metad[4]
+```
+
+
+#mOTUs study: spain vs UK
+```{r MetadeconfoundR Spain vs UK }
+ps_Study<- subset_samples(ps_clr_corrected, Timepoint%in% c("T0","T2"))
+ps_Study <-subset_samples(ps_Study, Group_cutoff_4 %in% c("NR", "R"))
+
+
+metadata_Study<-data.frame(sample_data(ps_Study))
+
+metadata_Study <- metadata_Study %>% 
+  mutate(Study_all_SpainvsUK = ifelse(Study == "Spain", 1, 0))%>%
+  select(Study_all_SpainvsUK, Volunteer)
+
+
+# run metadeconfoundR
+features <- as.data.frame(otu_table(ps_Study))
+
+##Instead of using only one taxa, I use the function created by Victor to asign the name of the taxa by the last annotation in the tax table
+latest_annotations <- get_latest_annotation(ps_Study)
+latest_annotations<-as.data.frame(latest_annotations)
+
+
+#create two-column-dataframe containing corresponding "human-readable" names to the "machine-readable" feature names used as row.names in metaDeconfOutput.  
+taxtable <- latest_annotations
+taxtable$ASV <- row.names(taxtable)
+taxtable<- cbind(ASV=taxtable$ASV,subset(taxtable,select = -c(ASV)))
+
+features <- as.data.frame(t(features))
+### run it
+metad <- MetaDeconfound(featureMat = features, metaMat = metadata_Study, randomVar = c("Volunteer"))
+
+raw_p_Study_Study <- metad[1]
+corr_p_Study_Study <- metad[2]
+effect_size_Study_Study <- metad[3]
+status_Study_Study <- metad[4]
+```
+
+#Construction of table for plotting
+```{r bind effectsize table}
+
+raw_p <- purrr::map2(raw_p_Responders_Timepoint,raw_p_NR_Timepoint,cbind)
+raw_p <- purrr::map2(raw_p,raw_p_T0_Group,cbind)
+raw_p <- purrr::map2(raw_p,raw_p_T2_Group,cbind)
+raw_p <- purrr::map2(raw_p,raw_p_Group_Group,cbind)
+raw_p <- purrr::map2(raw_p,raw_p_Timepoint_Timepoint,cbind)
+raw_p <- purrr::map2(raw_p,raw_p_Study_Study,cbind)
+
+raw_p_df <- bind_rows(raw_p)
+raw_p_df <- data.frame(raw_p_df$Ps)
+raw_p_df  <- raw_p_df %>%
+    rownames_to_column()%>%
+    mutate(p_Responders_RT2vsT0=Timepoint_Responders_T2vsT0)%>%
+    mutate(p_NR_NRT2vsT0=Timepoint_NR_T2vsT0)%>%
+    mutate(p_T0_T0RvsNR=Group_T0_RvsNR)%>%
+    mutate(p_T2_T2RvsNR=Group_T2_RvsNR)%>%
+    mutate(p_all_RvsNR=Group_all_RvsNR)%>%
+    mutate(p_all_T2vsT0=Timepoint_all_T2vsT0)%>%
+    mutate(p_all_SPAINvsUK=Study_all_SpainvsUK)%>%
+    select(!c(Timepoint_Responders_T2vsT0, Timepoint_NR_T2vsT0, Group_T0_RvsNR, Group_T2_RvsNR, Group_all_RvsNR, Timepoint_all_T2vsT0, Study_all_SpainvsUK))
+
+
+
+corr_p <- purrr::map2(corr_p_Responders_Timepoint,corr_p_NR_Timepoint,cbind)
+corr_p <- purrr::map2(corr_p,corr_p_T0_Group,cbind)
+corr_p <- purrr::map2(corr_p,corr_p_T2_Group,cbind)
+corr_p <- purrr::map2(corr_p,corr_p_Group_Group,cbind)
+corr_p <- purrr::map2(corr_p,corr_p_Timepoint_Timepoint,cbind)
+corr_p <- purrr::map2(corr_p,corr_p_Study_Study,cbind)
+
+corr_p_df <- bind_rows(corr_p)
+corr_p_df <- data.frame(corr_p_df$Qs)
+corr_p_df  <- corr_p_df %>%
+    rownames_to_column()%>%
+    mutate(q_Responders_RT2vsT0=Timepoint_Responders_T2vsT0)%>%
+    mutate(q_NR_NRT2vsT0=Timepoint_NR_T2vsT0)%>%
+    mutate(q_T0_T0RvsNR=Group_T0_RvsNR)%>%
+    mutate(q_T2_T2RvsNR=Group_T2_RvsNR)%>%
+    mutate(q_all_RvsNR=Group_all_RvsNR)%>%
+    mutate(q_all_T2vsT0=Timepoint_all_T2vsT0)%>%
+    mutate(q_all_SPAINvsUK=Study_all_SpainvsUK)%>%
+    select(!c(Timepoint_Responders_T2vsT0, Timepoint_NR_T2vsT0, Group_T0_RvsNR, Group_T2_RvsNR, Group_all_RvsNR, Timepoint_all_T2vsT0, Study_all_SpainvsUK))
+
+
+effect_size <- purrr::map2(effect_size_Responders_Timepoint,effect_size_NR_Timepoint,cbind)
+effect_size <- purrr::map2(effect_size,effect_size_T0_Group,cbind)
+effect_size <- purrr::map2(effect_size,effect_size_T2_Group,cbind)
+effect_size <- purrr::map2(effect_size,effect_size_Group_Group,cbind)
+effect_size <- purrr::map2(effect_size,effect_size_Timepoint_Timepoint,cbind)
+effect_size <- purrr::map2(effect_size,effect_size_Study_Study,cbind)
+
+effect_size_df <- bind_rows(effect_size)
+effect_size_df <- data.frame(effect_size_df$Ds)
+effect_size_df  <- effect_size_df %>%
+    rownames_to_column()%>%
+    mutate(d_Responders_RT2vsT0=Timepoint_Responders_T2vsT0)%>%
+    mutate(d_NR_NRT2vsT0=Timepoint_NR_T2vsT0)%>%
+    mutate(d_T0_T0RvsNR=Group_T0_RvsNR)%>%
+    mutate(d_T2_T2RvsNR=Group_T2_RvsNR)%>%
+    mutate(d_all_RvsNR=Group_all_RvsNR)%>%
+    mutate(d_all_T2vsT0=Timepoint_all_T2vsT0)%>%
+    mutate(d_all_SPAINvsUK=Study_all_SpainvsUK)%>%
+    select(!c(Timepoint_Responders_T2vsT0, Timepoint_NR_T2vsT0, Group_T0_RvsNR, Group_T2_RvsNR, Group_all_RvsNR, Timepoint_all_T2vsT0, Study_all_SpainvsUK))
+
+status <- purrr::map2(status_Responders_Timepoint,status_NR_Timepoint,cbind)
+status <- purrr::map2(status,status_T0_Group,cbind)
+status <- purrr::map2(status,status_T2_Group,cbind)
+status <- purrr::map2(status,status_Group_Group,cbind)
+status <- purrr::map2(status,status_Timepoint_Timepoint,cbind)
+status <- purrr::map2(status,status_Study_Study,cbind)
+
+status_df <- bind_rows(status)
+status_df <- data.frame(status_df$status)
+status_df  <- status_df %>%
+    rownames_to_column()%>%
+    mutate(status_Responders_RT2vsT0=Timepoint_Responders_T2vsT0)%>%
+    mutate(status_NR_NRT2vsT0=Timepoint_NR_T2vsT0)%>%
+    mutate(status_T0_T0RvsNR=Group_T0_RvsNR)%>%
+    mutate(status_T2_T2RvsNR=Group_T2_RvsNR)%>%
+    mutate(status_all_RvsNR=Group_all_RvsNR)%>%
+    mutate(status_all_T2vsT0=Timepoint_all_T2vsT0)%>%
+    mutate(status_all_SPAINvsUK=Study_all_SpainvsUK)%>%
+    select(!c(Timepoint_Responders_T2vsT0, Timepoint_NR_T2vsT0, Group_T0_RvsNR, Group_T2_RvsNR, Group_all_RvsNR, Timepoint_all_T2vsT0, Study_all_SpainvsUK))
+
+##Instead of using only one taxa, I use the function created by Victor to asign the name of the taxa by the last annotation in the tax table
+latest_annotations <- get_latest_annotation(ps_clr_corrected)
+latest_annotations<-as.data.frame(latest_annotations)
+
+#create two-column-dataframe containing corresponding "human-readable" names to the "machine-readable" feature names used as row.names in metaDeconfOutput.  
+taxtable <- latest_annotations
+taxtable$rowname <- latest_annotations$ASV
+taxtable<- cbind(rowname=taxtable$rowname,subset(taxtable,select = -c(rowname)))
+
+effect_table <- raw_p_df%>%
+    full_join(corr_p_df, by="rowname")%>%
+    full_join(effect_size_df, by="rowname")%>%
+    full_join(status_df, by="rowname")%>%
+    full_join(taxtable, by="rowname")
+
+# select the entries which have OK_nc in status
+effect_table_sig <- effect_table%>%
+    filter(status_Responders_RT2vsT0=="OK_nc"|status_NR_NRT2vsT0=="OK_nc"|status_T0_T0RvsNR =="OK_nc" |status_T2_T2RvsNR =="OK_nc" |status_all_RvsNR =="OK_nc" |status_all_T2vsT0 =="OK_nc" | status_all_SPAINvsUK=="OK_nc")
+
+   
+#pivot long format
+
+effect_table_sig_long <- effect_table_sig%>%
+  pivot_longer(cols = starts_with("status"), names_to = "comparison_status", values_to = "status")%>%
+  separate(comparison_status, c("variable" ,"Group", "Comparison"), "_")%>%
+  mutate(comparison_status=paste(Group,Comparison, sep="_"))%>%
+  select(-c(variable, Group, Comparison))%>%
+  pivot_longer(cols = starts_with("p"), names_to = "comparison_p", values_to = "raw_p")%>%
+  separate(comparison_p, c("variable" ,"Group", "Comparison"), "_")%>%
+  mutate(comparison_p=paste(Group,Comparison, sep="_"))%>%
+  select(-c(variable, Group, Comparison))%>%
+  filter(comparison_p==comparison_status)%>%
+  pivot_longer(cols = starts_with("d"), names_to = "comparison_effectSize", values_to = "effectSize")%>%
+  separate(comparison_effectSize, c("variable" ,"Group", "Comparison"), "_")%>%
+  mutate(comparison_effectSize=paste(Group,Comparison, sep="_"))%>%
+  select(-c(variable, Group, Comparison))%>%
+  filter(comparison_p==comparison_effectSize)%>%
+  pivot_longer(cols = starts_with("q"), names_to = "comparison_q", values_to = "corr_p")%>%
+  separate(comparison_q, c("variable" ,"Group", "Comparison"), "_")%>%
+  mutate(comparison_q=paste(Group,Comparison, sep="_"))%>%
+  select(-c(variable))%>%
+  filter(comparison_p==comparison_q)%>%
+  select(-c(comparison_q, comparison_effectSize,comparison_status))%>%
+  mutate(fdr= as_factor(case_when(corr_p <= 0.05 ~ "*", corr_p <= 0.01 ~ "**", corr_p <= 0.001 ~ "***", corr_p <= 0.1 ~ ".")))%>%
+  mutate(taxa=paste(TaxaID))
+
+```
+
+#plot taxa
+```{r one for tax and other for GMM}
+#Taxa
+effect_table_sig_long %>%
+    ggplot(aes(x = Comparison, y = TaxaID)) +
+    geom_point(aes(fill = effectSize, shape = as.factor(sign(effectSize)), 
+                   size = abs(effectSize), color = status)) +
+    scale_shape_manual(values = c(25, 24, 24)) + 
+    scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0) +
+    scale_color_manual(values = c("gray22", "gray1"), labels = c("Confounded", "Deconfounded")) +
+    guides(color = guide_legend(override.aes = list(shape = c(1, 8)))) +
+    geom_text(aes(label = stars.pval(corr_p), colour = status), size = 7, key_glyph = "point") +
+    theme_classic() +
+    theme(
+        axis.text.x = element_text(size = 12, angle = 90, hjust = 1, vjust = 0.3),
+        axis.text.y = element_text(size = 12, hjust = 1, vjust = 0.3),
+        axis.title.y = element_text(size = 12, angle = 90, hjust = 1, vjust = 0.3),
+        plot.title.position = "plot",
+        plot.title = element_text(hjust = 0),
+        plot.subtitle = element_text(size = 8),
+        strip.text = element_text(size = 14, face = "bold"),
+        legend.text = element_text(size = 12)
+    ) +
+    labs(
+        x = "Comparisons",
+        y = "Variables",
+        fill = "Effect size", 
+        shape = "Confounding status"
+    )
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/MetadeconfoundR/taxa_corrected_clr.pdf", height = 4, width = 11)
+
+
+
+```
+
+
+#plot taxa without study
+```{r one for tax and other for GMM}
+
+raw_p <- purrr::map2(raw_p_Responders_Timepoint,raw_p_NR_Timepoint,cbind)
+raw_p <- purrr::map2(raw_p,raw_p_T0_Group,cbind)
+raw_p <- purrr::map2(raw_p,raw_p_T2_Group,cbind)
+raw_p <- purrr::map2(raw_p,raw_p_Group_Group,cbind)
+raw_p <- purrr::map2(raw_p,raw_p_Timepoint_Timepoint,cbind)
+
+raw_p_df <- bind_rows(raw_p)
+raw_p_df <- data.frame(raw_p_df$Ps)
+raw_p_df  <- raw_p_df %>%
+    rownames_to_column()%>%
+    mutate(p_Responders_RT2vsT0=Timepoint_Responders_T2vsT0)%>%
+    mutate(p_NR_NRT2vsT0=Timepoint_NR_T2vsT0)%>%
+    mutate(p_T0_T0RvsNR=Group_T0_RvsNR)%>%
+    mutate(p_T2_T2RvsNR=Group_T2_RvsNR)%>%
+    mutate(p_all_RvsNR=Group_all_RvsNR)%>%
+    mutate(p_all_T2vsT0=Timepoint_all_T2vsT0)%>%
+    select(!c(Timepoint_Responders_T2vsT0, Timepoint_NR_T2vsT0, Group_T0_RvsNR, Group_T2_RvsNR, Group_all_RvsNR, Timepoint_all_T2vsT0))
+
+
+
+corr_p <- purrr::map2(corr_p_Responders_Timepoint,corr_p_NR_Timepoint,cbind)
+corr_p <- purrr::map2(corr_p,corr_p_T0_Group,cbind)
+corr_p <- purrr::map2(corr_p,corr_p_T2_Group,cbind)
+corr_p <- purrr::map2(corr_p,corr_p_Group_Group,cbind)
+corr_p <- purrr::map2(corr_p,corr_p_Timepoint_Timepoint,cbind)
+
+corr_p_df <- bind_rows(corr_p)
+corr_p_df <- data.frame(corr_p_df$Qs)
+corr_p_df  <- corr_p_df %>%
+    rownames_to_column()%>%
+    mutate(q_Responders_RT2vsT0=Timepoint_Responders_T2vsT0)%>%
+    mutate(q_NR_NRT2vsT0=Timepoint_NR_T2vsT0)%>%
+    mutate(q_T0_T0RvsNR=Group_T0_RvsNR)%>%
+    mutate(q_T2_T2RvsNR=Group_T2_RvsNR)%>%
+    mutate(q_all_RvsNR=Group_all_RvsNR)%>%
+    mutate(q_all_T2vsT0=Timepoint_all_T2vsT0)%>%
+    select(!c(Timepoint_Responders_T2vsT0, Timepoint_NR_T2vsT0, Group_T0_RvsNR, Group_T2_RvsNR, Group_all_RvsNR, Timepoint_all_T2vsT0))
+
+
+effect_size <- purrr::map2(effect_size_Responders_Timepoint,effect_size_NR_Timepoint,cbind)
+effect_size <- purrr::map2(effect_size,effect_size_T0_Group,cbind)
+effect_size <- purrr::map2(effect_size,effect_size_T2_Group,cbind)
+effect_size <- purrr::map2(effect_size,effect_size_Group_Group,cbind)
+effect_size <- purrr::map2(effect_size,effect_size_Timepoint_Timepoint,cbind)
+
+effect_size_df <- bind_rows(effect_size)
+effect_size_df <- data.frame(effect_size_df$Ds)
+effect_size_df  <- effect_size_df %>%
+    rownames_to_column()%>%
+    mutate(d_Responders_RT2vsT0=Timepoint_Responders_T2vsT0)%>%
+    mutate(d_NR_NRT2vsT0=Timepoint_NR_T2vsT0)%>%
+    mutate(d_T0_T0RvsNR=Group_T0_RvsNR)%>%
+    mutate(d_T2_T2RvsNR=Group_T2_RvsNR)%>%
+    mutate(d_all_RvsNR=Group_all_RvsNR)%>%
+    mutate(d_all_T2vsT0=Timepoint_all_T2vsT0)%>%
+    select(!c(Timepoint_Responders_T2vsT0, Timepoint_NR_T2vsT0, Group_T0_RvsNR, Group_T2_RvsNR, Group_all_RvsNR, Timepoint_all_T2vsT0))
+
+status <- purrr::map2(status_Responders_Timepoint,status_NR_Timepoint,cbind)
+status <- purrr::map2(status,status_T0_Group,cbind)
+status <- purrr::map2(status,status_T2_Group,cbind)
+status <- purrr::map2(status,status_Group_Group,cbind)
+status <- purrr::map2(status,status_Timepoint_Timepoint,cbind)
+
+status_df <- bind_rows(status)
+status_df <- data.frame(status_df$status)
+status_df  <- status_df %>%
+    rownames_to_column()%>%
+    mutate(status_Responders_RT2vsT0=Timepoint_Responders_T2vsT0)%>%
+    mutate(status_NR_NRT2vsT0=Timepoint_NR_T2vsT0)%>%
+    mutate(status_T0_T0RvsNR=Group_T0_RvsNR)%>%
+    mutate(status_T2_T2RvsNR=Group_T2_RvsNR)%>%
+    mutate(status_all_RvsNR=Group_all_RvsNR)%>%
+    mutate(status_all_T2vsT0=Timepoint_all_T2vsT0)%>%
+    select(!c(Timepoint_Responders_T2vsT0, Timepoint_NR_T2vsT0, Group_T0_RvsNR, Group_T2_RvsNR, Group_all_RvsNR, Timepoint_all_T2vsT0))
+
+##Instead of using only one taxa, I use the function created by Victor to asign the name of the taxa by the last annotation in the tax table
+latest_annotations <- get_latest_annotation(ps_clr_corrected)
+latest_annotations<-as.data.frame(latest_annotations)
+
+#create two-column-dataframe containing corresponding "human-readable" names to the "machine-readable" feature names used as row.names in metaDeconfOutput.  
+taxtable <- latest_annotations
+taxtable$rowname <- latest_annotations$ASV
+taxtable<- cbind(rowname=taxtable$rowname,subset(taxtable,select = -c(rowname)))
+
+effect_table <- raw_p_df%>%
+    full_join(corr_p_df, by="rowname")%>%
+    full_join(effect_size_df, by="rowname")%>%
+    full_join(status_df, by="rowname")%>%
+    full_join(taxtable, by="rowname")
+
+# select the entries which have OK_nc in status
+effect_table_sig <- effect_table%>%
+    filter(status_Responders_RT2vsT0=="OK_nc"|status_NR_NRT2vsT0=="OK_nc"|status_T0_T0RvsNR =="OK_nc" |status_T2_T2RvsNR =="OK_nc" |status_all_RvsNR =="OK_nc" |status_all_T2vsT0 =="OK_nc")
+
+   
+#pivot long format
+
+effect_table_sig_long <- effect_table_sig%>%
+  pivot_longer(cols = starts_with("status"), names_to = "comparison_status", values_to = "status")%>%
+  separate(comparison_status, c("variable" ,"Group", "Comparison"), "_")%>%
+  mutate(comparison_status=paste(Group,Comparison, sep="_"))%>%
+  select(-c(variable, Group, Comparison))%>%
+  pivot_longer(cols = starts_with("p"), names_to = "comparison_p", values_to = "raw_p")%>%
+  separate(comparison_p, c("variable" ,"Group", "Comparison"), "_")%>%
+  mutate(comparison_p=paste(Group,Comparison, sep="_"))%>%
+  select(-c(variable, Group, Comparison))%>%
+  filter(comparison_p==comparison_status)%>%
+  pivot_longer(cols = starts_with("d"), names_to = "comparison_effectSize", values_to = "effectSize")%>%
+  separate(comparison_effectSize, c("variable" ,"Group", "Comparison"), "_")%>%
+  mutate(comparison_effectSize=paste(Group,Comparison, sep="_"))%>%
+  select(-c(variable, Group, Comparison))%>%
+  filter(comparison_p==comparison_effectSize)%>%
+  pivot_longer(cols = starts_with("q"), names_to = "comparison_q", values_to = "corr_p")%>%
+  separate(comparison_q, c("variable" ,"Group", "Comparison"), "_")%>%
+  mutate(comparison_q=paste(Group,Comparison, sep="_"))%>%
+  select(-c(variable))%>%
+  filter(comparison_p==comparison_q)%>%
+  select(-c(comparison_q, comparison_effectSize,comparison_status))%>%
+  mutate(fdr= as_factor(case_when(corr_p <= 0.05 ~ "*", corr_p <= 0.01 ~ "**", corr_p <= 0.001 ~ "***", corr_p <= 0.1 ~ ".")))%>%
+  mutate(taxa=paste(TaxaID))
+
+#Taxa
+effect_table_sig_long %>%
+    ggplot(aes(x = Comparison, y = TaxaID)) +
+    geom_point(aes(fill = effectSize, shape = as.factor(sign(effectSize)), 
+                   size = abs(effectSize), color = status)) +
+    scale_shape_manual(values = c(25, 24, 24)) + 
+    scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0) +
+    scale_color_manual(values = c("gray22", "gray1"), labels = c("Confounded", "Deconfounded")) +
+    guides(color = guide_legend(override.aes = list(shape = c(1, 8)))) +
+    geom_text(aes(label = stars.pval(corr_p), colour = status), size = 7, key_glyph = "point") +
+    theme_classic() +
+    theme(
+        axis.text.x = element_text(size = 12, angle = 90, hjust = 1, vjust = 0.3),
+        axis.text.y = element_text(size = 12, hjust = 1, vjust = 0.3),
+        axis.title.y = element_text(size = 12, angle = 90, hjust = 1, vjust = 0.3),
+        plot.title.position = "plot",
+        plot.title = element_text(hjust = 0),
+        plot.subtitle = element_text(size = 8),
+        strip.text = element_text(size = 14, face = "bold"),
+        legend.text = element_text(size = 12)
+    ) +
+    labs(
+        x = "Comparisons",
+        y = "Variables",
+        fill = "Effect size", 
+        shape = "Confounding status"
+    )
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/MetadeconfoundR/taxa_corrected_clr_woStudy.pdf", height = 4, width = 11)
+
+
+
+```
+
+#Rename GMMs
+```{r Changing names KOs}
+library(tidyr)
+library(tibble)
+library(purrr)
+require(phyloseq)
+require(tidyverse)
+require(magrittr)
+
+get_latest_annotation_noASV <- function(phyloseq_obj) {
+  tax_table <- phyloseq_obj@tax_table %>%
+    as.data.frame() %>%
+    rownames_to_column('ASV') %>%
+    as_tibble() %>%
+    tidyr::gather('Rank', 'Value', -ASV) %>%
+    nest(data = -ASV) %>%
+    mutate(TaxaID = map_chr(data, function(x) {
+      x %>%
+        dplyr::filter(!is.na(Value)) %>%
+        magrittr::use_series(Value) %>%
+        tail(1)
+    })) %>%
+    mutate(TaxaUp = map_chr(data, function(x) {
+      x %>%
+        dplyr::filter(!is.na(Value)) %>%
+        magrittr::use_series(Value) %>%
+        tail(2) %>% head(1)
+    })) %>%
+    mutate(TaxaID = paste(ASV, TaxaID)) %>%
+    dplyr::select(-c(data, TaxaUp))
+  
+  return(tax_table)
+}
+
+```
+
+
+#GMMs Responders: T2 vs T0
+```{r MetadeconfoundR T2 vs T0 R}
+GMMs_Responders_Timepoint<- subset_samples(GMMs_corrected, Group_cutoff_4 %in% c("R"))
+GMMs_Responders_Timepoint <-subset_samples(GMMs_Responders_Timepoint, Timepoint %in% c("T0", "T2"))
+
+
+metadata_Responders_Timepoint<-data.frame(sample_data(GMMs_Responders_Timepoint))
+
+#Since there are no confounded associations, I will only keep variables of interest
+metadata_Responders_Timepoint <- metadata_Responders_Timepoint %>% 
+  mutate(Timepoint_Responders_T2vsT0 = ifelse(Timepoint == "T2", 1, 0))%>% 
+  mutate(Study = ifelse(Study == "Spain", 1, 0))
+metadata_Responders_Timepoint <- metadata_Responders_Timepoint%>%
+  select(Timepoint_Responders_T2vsT0, Study)
+
+# run metadeconfoundR
+features <- as.data.frame(otu_table(GMMs_Responders_Timepoint))
+
+##Instead of using only one taxa, I use the function created by Victor to asign the name of the taxa by the last annotation in the tax table
+latest_annotations <- get_latest_annotation_noASV(GMMs_Responders_Timepoint)
+latest_annotations<-as.data.frame(latest_annotations)
+
+
+#create two-column-dataframe containing corresponding "human-readable" names to the "machine-readable" feature names used as row.names in metaDeconfOutput.  
+taxtable <- latest_annotations
+taxtable$ASV <- row.names(taxtable)
+taxtable<- cbind(ASV=taxtable$ASV,subset(taxtable,select = -c(ASV)))
+
+features <- as.data.frame(t(features))
+### run it
+metad <- MetaDeconfound(featureMat = features, metaMat = metadata_Responders_Timepoint, randomVar = "Study")
+
+raw_GMM_Responders_Timepoint <- metad[1]
+corr_GMM_Responders_Timepoint <- metad[2]
+effect_GMM_Responders_Timepoint <- metad[3]
+statusGMM_Responders_Timepoint <- metad[4]
+```
+
+#GMMs Non-responders: T2 vs T0
+```{r MetadeconfoundR T2 vs T0 R}
+GMM_NR_Timepoint<- subset_samples(GMMs_corrected, Group_cutoff_4 %in% c("NR"))
+GMM_NR_Timepoint <-subset_samples(GMM_NR_Timepoint, Timepoint %in% c("T0", "T2"))
+
+
+metadata_NR_Timepoint<-data.frame(sample_data(GMM_NR_Timepoint))
+
+metadata_NR_Timepoint <- metadata_NR_Timepoint %>% 
+  mutate(Timepoint_NR_T2vsT0 = ifelse(Timepoint == "T2", 1, 0))%>% 
+  mutate(Study = ifelse(Study == "Spain", 1, 0))%>%
+  select(Timepoint_NR_T2vsT0,Study)
+
+
+# run metadeconfoundR
+features <- as.data.frame(otu_table(GMM_NR_Timepoint))
+
+##Instead of using only one taxa, I use the function created by Victor to asign the name of the taxa by the last annotation in the tax table
+latest_annotations <- get_latest_annotation_noASV(GMM_NR_Timepoint)
+latest_annotations<-as.data.frame(latest_annotations)
+
+
+#create two-column-dataframe containing corresponding "human-readable" names to the "machine-readable" feature names used as row.names in metaDeconfOutput.  
+taxtable <- latest_annotations
+taxtable$ASV <- row.names(taxtable)
+taxtable<- cbind(ASV=taxtable$ASV,subset(taxtable,select = -c(ASV)))
+
+features <- as.data.frame(t(features))
+### run it
+metad <- MetaDeconfound(featureMat = features, metaMat = metadata_NR_Timepoint,
+                        randomVar = "Study")
+
+raw_GMM_NR_Timepoint <- metad[1]
+corr_GMM_NR_Timepoint <- metad[2]
+effect_GMM_NR_Timepoint <- metad[3]
+statusGMM_NR_Timepoint <- metad[4]
+```
+
+
+
+#GMMs T0: R vs NR
+```{r MetadeconfoundR R vs NR T0}
+GMM_T0_Group<- subset_samples(GMMs_corrected, Timepoint%in% c("T0"))
+GMM_T0_Group <-subset_samples(GMM_T0_Group, Group_cutoff_4 %in% c("NR", "R"))
+
+
+metadata_T0_Group<-data.frame(sample_data(GMM_T0_Group))
+
+metadata_T0_Group <- metadata_T0_Group %>% 
+  mutate(Group_T0_RvsNR = ifelse(Group_cutoff_4 == "R", 1, 0))%>%  
+  mutate(Study = ifelse(Study == "Spain", 1, 0))%>%
+  select(Group_T0_RvsNR, Study)
+
+
+# run metadeconfoundR
+features <- as.data.frame(otu_table(GMM_T0_Group))
+
+##Instead of using only one taxa, I use the function created by Victor to asign the name of the taxa by the last annotation in the tax table
+latest_annotations <- get_latest_annotation_noASV(GMM_T0_Group)
+latest_annotations<-as.data.frame(latest_annotations)
+
+
+#create two-column-dataframe containing corresponding "human-readable" names to the "machine-readable" feature names used as row.names in metaDeconfOutput.  
+taxtable <- latest_annotations
+taxtable$ASV <- row.names(taxtable)
+taxtable<- cbind(ASV=taxtable$ASV,subset(taxtable,select = -c(ASV)))
+
+features <- as.data.frame(t(features))
+### run it
+metad <- MetaDeconfound(featureMat = features, metaMat = metadata_T0_Group,
+                        randomVar = "Study")
+
+raw_GMM_T0_Group <- metad[1]
+corr_GMM_T0_Group <- metad[2]
+effect_GMM_T0_Group <- metad[3]
+statusGMM_T0_Group <- metad[4]
+```
+
+
+#GMMs T2: R vs NR
+```{r MetadeconfoundR R vs NR T2}
+GMM_T2_Group<- subset_samples(GMMs_corrected, Timepoint%in% c("T2"))
+GMM_T2_Group <-subset_samples(GMM_T2_Group, Group_cutoff_4 %in% c("NR", "R"))
+
+
+metadata_T2_Group<-data.frame(sample_data(GMM_T2_Group))
+
+metadata_T2_Group <- metadata_T2_Group %>% 
+  mutate(Group_T2_RvsNR = ifelse(Group_cutoff_4 == "R", 1, 0))%>%
+  mutate(Study = ifelse(Study == "Spain", 1, 0))%>%
+  select(Group_T2_RvsNR, Study)
+
+
+# run metadeconfoundR
+features <- as.data.frame(otu_table(GMM_T2_Group))
+
+##Instead of using only one taxa, I use the function created by Victor to asign the name of the taxa by the last annotation in the tax table
+latest_annotations <- get_latest_annotation_noASV(GMM_T2_Group)
+latest_annotations<-as.data.frame(latest_annotations)
+
+
+#create two-column-dataframe containing corresponding "human-readable" names to the "machine-readable" feature names used as row.names in metaDeconfOutput.  
+taxtable <- latest_annotations
+taxtable$ASV <- row.names(taxtable)
+taxtable<- cbind(ASV=taxtable$ASV,subset(taxtable,select = -c(ASV)))
+
+features <- as.data.frame(t(features))
+### run it
+metad <- MetaDeconfound(featureMat = features, metaMat = metadata_T2_Group,
+                        randomVar = "Study")
+
+raw_GMM_T2_Group <- metad[1]
+corr_GMM_T2_Group <- metad[2]
+effect_GMM_T2_Group <- metad[3]
+statusGMM_T2_Group <- metad[4]
+```
+
+
+#GMMs Group: R vs NR
+```{r MetadeconfoundR R vs NR all}
+GMM_Group<- subset_samples(GMMs_corrected, Timepoint%in% c("T0","T2"))
+GMM_Group <-subset_samples(GMM_Group, Group_cutoff_4 %in% c("NR", "R"))
+
+
+metadata_Group<-data.frame(sample_data(GMM_Group))
+
+metadata_Group <- metadata_Group %>% 
+  mutate(Group_all_RvsNR = ifelse(Group_cutoff_4 == "R", 1, 0))%>%
+  mutate(Study = ifelse(Study == "Spain", 1, 0))%>%
+  select(Group_all_RvsNR, Study, Volunteer)
+
+
+# run metadeconfoundR
+features <- as.data.frame(otu_table(GMM_Group))
+
+##Instead of using only one taxa, I use the function created by Victor to asign the name of the taxa by the last annotation in the tax table
+latest_annotations <- get_latest_annotation_noASV(GMM_Group)
+latest_annotations<-as.data.frame(latest_annotations)
+
+
+#create two-column-dataframe containing corresponding "human-readable" names to the "machine-readable" feature names used as row.names in metaDeconfOutput.  
+taxtable <- latest_annotations
+taxtable$ASV <- row.names(taxtable)
+taxtable<- cbind(ASV=taxtable$ASV,subset(taxtable,select = -c(ASV)))
+
+features <- as.data.frame(t(features))
+### run it
+metad <- MetaDeconfound(featureMat = features, metaMat = metadata_Group,
+                        randomVar = c("Study", "Volunteer"))
+
+raw_GMM_Group_Group <- metad[1]
+corr_GMM_Group_Group <- metad[2]
+effect_GMM_Group_Group <- metad[3]
+statusGMM_Group_Group <- metad[4]
+```
+
+#GMMs Timepoint: T2 vs T0
+```{r MetadeconfoundR T2 vs T0 all}
+GMM_Timepoint<- subset_samples(GMMs_corrected, Timepoint%in% c("T0","T2"))
+GMM_Timepoint <-subset_samples(GMM_Timepoint, Group_cutoff_4 %in% c("NR", "R"))
+
+
+metadata_Timepoint<-data.frame(sample_data(GMM_Timepoint))
+
+metadata_Timepoint <- metadata_Timepoint %>% 
+  mutate(Timepoint_all_T2vsT0 = ifelse(Timepoint == "T2", 1, 0))%>%
+  mutate(Study = ifelse(Study == "Spain", 1, 0))%>%
+  select(Timepoint_all_T2vsT0, Study)
+
+
+# run metadeconfoundR
+features <- as.data.frame(otu_table(GMM_Timepoint))
+
+##Instead of using only one taxa, I use the function created by Victor to asign the name of the taxa by the last annotation in the tax table
+latest_annotations <- get_latest_annotation_noASV(GMM_Timepoint)
+latest_annotations<-as.data.frame(latest_annotations)
+
+
+#create two-column-dataframe containing corresponding "human-readable" names to the "machine-readable" feature names used as row.names in metaDeconfOutput.  
+taxtable <- latest_annotations
+taxtable$ASV <- row.names(taxtable)
+taxtable<- cbind(ASV=taxtable$ASV,subset(taxtable,select = -c(ASV)))
+
+features <- as.data.frame(t(features))
+### run it
+metad <- MetaDeconfound(featureMat = features, metaMat = metadata_Timepoint,
+                        randomVar = "Study")
+
+raw_GMM_Timepoint_Timepoint <- metad[1]
+corr_GMM_Timepoint_Timepoint <- metad[2]
+effect_GMM_Timepoint_Timepoint <- metad[3]
+statusGMM_Timepoint_Timepoint <- metad[4]
+```
+
+
+#GMMs study: spain vs UK
+```{r MetadeconfoundR Spain vs UK}
+GMM_Study<- subset_samples(GMMs_corrected, Timepoint%in% c("T0","T2"))
+GMM_Study <-subset_samples(GMM_Study, Group_cutoff_4 %in% c("NR", "R"))
+
+
+metadata_Study<-data.frame(sample_data(GMM_Study))
+
+metadata_Study <- metadata_Study %>% 
+  mutate(Study_all_SpainvsUK = ifelse(Study == "Spain", 1, 0))%>%
+  select(Study_all_SpainvsUK, Volunteer)
+
+
+# run metadeconfoundR
+features <- as.data.frame(otu_table(GMM_Study))
+
+##Instead of using only one taxa, I use the function created by Victor to asign the name of the taxa by the last annotation in the tax table
+latest_annotations <- get_latest_annotation_noASV(GMM_Study)
+latest_annotations<-as.data.frame(latest_annotations)
+
+
+#create two-column-dataframe containing corresponding "human-readable" names to the "machine-readable" feature names used as row.names in metaDeconfOutput.  
+taxtable <- latest_annotations
+taxtable$ASV <- row.names(taxtable)
+taxtable<- cbind(ASV=taxtable$ASV,subset(taxtable,select = -c(ASV)))
+
+features <- as.data.frame(t(features))
+### run it
+metad <- MetaDeconfound(featureMat = features, metaMat = metadata_Study, randomVar = "Volunteer")
+
+raw_GMM_Study_Study <- metad[1]
+corr_GMM_Study_Study <- metad[2]
+effect_GMM_Study_Study <- metad[3]
+statusGMM_Study_Study <- metad[4]
+```
+
+
+#Construction of table for plotting
+```{r bind effectsize table}
+
+raw_GMM <- purrr::map2(raw_GMM_Responders_Timepoint,raw_GMM_NR_Timepoint,cbind)
+raw_GMM <- purrr::map2(raw_GMM,raw_GMM_T0_Group,cbind)
+raw_GMM <- purrr::map2(raw_GMM,raw_GMM_T2_Group,cbind)
+raw_GMM <- purrr::map2(raw_GMM,raw_GMM_Group_Group,cbind)
+raw_GMM <- purrr::map2(raw_GMM,raw_GMM_Timepoint_Timepoint,cbind)
+raw_GMM <- purrr::map2(raw_GMM,raw_GMM_Study_Study,cbind)
+
+raw_GMM_df <- bind_rows(raw_GMM)
+raw_GMM_df <- data.frame(raw_GMM_df$Ps)
+raw_GMM_df  <- raw_GMM_df %>%
+    rownames_to_column()%>%
+    mutate(p_Responders_RT2vsT0=Timepoint_Responders_T2vsT0)%>%
+    mutate(p_NR_NRT2vsT0=Timepoint_NR_T2vsT0)%>%
+    mutate(p_T0_T0RvsNR=Group_T0_RvsNR)%>%
+    mutate(p_T2_T2RvsNR=Group_T2_RvsNR)%>%
+    mutate(p_all_RvsNR=Group_all_RvsNR)%>%
+    mutate(p_all_T2vsT0=Timepoint_all_T2vsT0)%>%
+    mutate(p_all_SPAINvsUK=Study_all_SpainvsUK)%>%
+    select(!c(Timepoint_Responders_T2vsT0, Timepoint_NR_T2vsT0, Group_T0_RvsNR, Group_T2_RvsNR, Group_all_RvsNR, Timepoint_all_T2vsT0, Study_all_SpainvsUK))
+
+
+
+corr_GMM <- purrr::map2(corr_GMM_Responders_Timepoint,corr_GMM_NR_Timepoint,cbind)
+corr_GMM <- purrr::map2(corr_GMM,corr_GMM_T0_Group,cbind)
+corr_GMM <- purrr::map2(corr_GMM,corr_GMM_T2_Group,cbind)
+corr_GMM <- purrr::map2(corr_GMM,corr_GMM_Group_Group,cbind)
+corr_GMM <- purrr::map2(corr_GMM,corr_GMM_Timepoint_Timepoint,cbind)
+corr_GMM <- purrr::map2(corr_GMM,corr_GMM_Study_Study,cbind)
+
+corr_GMM_df <- bind_rows(corr_GMM)
+corr_GMM_df <- data.frame(corr_GMM_df$Qs)
+corr_GMM_df  <- corr_GMM_df %>%
+    rownames_to_column()%>%
+    mutate(q_Responders_RT2vsT0=Timepoint_Responders_T2vsT0)%>%
+    mutate(q_NR_NRT2vsT0=Timepoint_NR_T2vsT0)%>%
+    mutate(q_T0_T0RvsNR=Group_T0_RvsNR)%>%
+    mutate(q_T2_T2RvsNR=Group_T2_RvsNR)%>%
+    mutate(q_all_RvsNR=Group_all_RvsNR)%>%
+    mutate(q_all_T2vsT0=Timepoint_all_T2vsT0)%>%
+    mutate(q_all_SPAINvsUK=Study_all_SpainvsUK)%>%
+    select(!c(Timepoint_Responders_T2vsT0, Timepoint_NR_T2vsT0, Group_T0_RvsNR, Group_T2_RvsNR, Group_all_RvsNR, Timepoint_all_T2vsT0, Study_all_SpainvsUK))
+
+
+effect_GMM <- purrr::map2(effect_GMM_Responders_Timepoint,effect_GMM_NR_Timepoint,cbind)
+effect_GMM <- purrr::map2(effect_GMM,effect_GMM_T0_Group,cbind)
+effect_GMM <- purrr::map2(effect_GMM,effect_GMM_T2_Group,cbind)
+effect_GMM <- purrr::map2(effect_GMM,effect_GMM_Group_Group,cbind)
+effect_GMM <- purrr::map2(effect_GMM,effect_GMM_Timepoint_Timepoint,cbind)
+effect_GMM <- purrr::map2(effect_GMM,effect_GMM_Study_Study,cbind)
+
+effect_GMM_df <- bind_rows(effect_GMM)
+effect_GMM_df <- data.frame(effect_GMM_df$Ds)
+effect_GMM_df  <- effect_GMM_df %>%
+    rownames_to_column()%>%
+    mutate(d_Responders_RT2vsT0=Timepoint_Responders_T2vsT0)%>%
+    mutate(d_NR_NRT2vsT0=Timepoint_NR_T2vsT0)%>%
+    mutate(d_T0_T0RvsNR=Group_T0_RvsNR)%>%
+    mutate(d_T2_T2RvsNR=Group_T2_RvsNR)%>%
+    mutate(d_all_RvsNR=Group_all_RvsNR)%>%
+    mutate(d_all_T2vsT0=Timepoint_all_T2vsT0)%>%
+    mutate(d_all_SPAINvsUK=Study_all_SpainvsUK)%>%
+    select(!c(Timepoint_Responders_T2vsT0, Timepoint_NR_T2vsT0, Group_T0_RvsNR, Group_T2_RvsNR, Group_all_RvsNR, Timepoint_all_T2vsT0, Study_all_SpainvsUK))
+
+statusGMM <- purrr::map2(statusGMM_Responders_Timepoint,statusGMM_NR_Timepoint,cbind)
+statusGMM <- purrr::map2(statusGMM,statusGMM_T0_Group,cbind)
+statusGMM <- purrr::map2(statusGMM,statusGMM_T2_Group,cbind)
+statusGMM <- purrr::map2(statusGMM,statusGMM_Group_Group,cbind)
+statusGMM <- purrr::map2(statusGMM,statusGMM_Timepoint_Timepoint,cbind)
+statusGMM <- purrr::map2(statusGMM,statusGMM_Study_Study,cbind)
+
+statusGMM_df <- bind_rows(statusGMM)
+statusGMM_df <- data.frame(statusGMM_df$status)
+statusGMM_df  <- statusGMM_df %>%
+    rownames_to_column()%>%
+    mutate(status_Responders_RT2vsT0=Timepoint_Responders_T2vsT0)%>%
+    mutate(status_NR_NRT2vsT0=Timepoint_NR_T2vsT0)%>%
+    mutate(status_T0_T0RvsNR=Group_T0_RvsNR)%>%
+    mutate(status_T2_T2RvsNR=Group_T2_RvsNR)%>%
+    mutate(status_all_RvsNR=Group_all_RvsNR)%>%
+    mutate(status_all_T2vsT0=Timepoint_all_T2vsT0)%>%
+    mutate(status_all_SPAINvsUK=Study_all_SpainvsUK)%>%
+    select(!c(Timepoint_Responders_T2vsT0, Timepoint_NR_T2vsT0, Group_T0_RvsNR, Group_T2_RvsNR, Group_all_RvsNR, Timepoint_all_T2vsT0, Study_all_SpainvsUK))
+
+##Instead of using only one taxa, I use the function created by Victor to asign the name of the taxa by the last annotation in the tax table
+latest_annotations <- get_latest_annotation_noASV(GMMs_corrected)
+latest_annotations<-as.data.frame(latest_annotations)
+
+#create two-column-dataframe containing corresponding "human-readable" names to the "machine-readable" feature names used as row.names in metaDeconfOutput.  
+taxtableGMM <- latest_annotations
+taxtableGMM$rowname <- latest_annotations$ASV
+taxtableGMM<- cbind(rowname=taxtableGMM$rowname,subset(taxtableGMM,select = -c(rowname)))
+
+effect_table_GMM <- raw_GMM_df%>%
+    full_join(corr_GMM_df, by="rowname")%>%
+    full_join(effect_GMM_df, by="rowname")%>%
+    full_join(statusGMM_df, by="rowname")%>%
+    full_join(taxtableGMM, by="rowname")
+
+# select the entries which have OK_nc in status
+effect_table_sig_GMM <- effect_table_GMM%>%
+    filter(status_Responders_RT2vsT0=="OK_nc"|status_NR_NRT2vsT0=="OK_nc"|status_T0_T0RvsNR =="OK_nc" |status_T2_T2RvsNR =="OK_nc" |status_all_RvsNR =="OK_nc" |status_all_T2vsT0 =="OK_nc" | status_all_SPAINvsUK=="OK_nc")
+
+   
+#pivot long format
+
+effect_table_sig_long_GMM <- effect_table_sig_GMM%>%
+  pivot_longer(cols = starts_with("status"), names_to = "comparison_status", values_to = "status")%>%
+  separate(comparison_status, c("variable" ,"Group", "Comparison"), "_")%>%
+  mutate(comparison_status=paste(Group,Comparison, sep="_"))%>%
+  select(-c(variable, Group, Comparison))%>%
+  pivot_longer(cols = starts_with("p"), names_to = "comparison_p", values_to = "raw_p")%>%
+  separate(comparison_p, c("variable" ,"Group", "Comparison"), "_")%>%
+  mutate(comparison_p=paste(Group,Comparison, sep="_"))%>%
+  select(-c(variable, Group, Comparison))%>%
+  filter(comparison_p==comparison_status)%>%
+  pivot_longer(cols = starts_with("d"), names_to = "comparison_effectSize", values_to = "effectSize")%>%
+  separate(comparison_effectSize, c("variable" ,"Group", "Comparison"), "_")%>%
+  mutate(comparison_effectSize=paste(Group,Comparison, sep="_"))%>%
+  select(-c(variable, Group, Comparison))%>%
+  filter(comparison_p==comparison_effectSize)%>%
+  pivot_longer(cols = starts_with("q"), names_to = "comparison_q", values_to = "corr_p")%>%
+  separate(comparison_q, c("variable" ,"Group", "Comparison"), "_")%>%
+  mutate(comparison_q=paste(Group,Comparison, sep="_"))%>%
+  select(-c(variable))%>%
+  filter(comparison_p==comparison_q)%>%
+  select(-c(comparison_q, comparison_effectSize,comparison_status))%>%
+  mutate(fdr= as_factor(case_when(corr_p <= 0.05 ~ "*", corr_p <= 0.01 ~ "**", corr_p <= 0.001 ~ "***", corr_p <= 0.1 ~ ".")))%>%
+  mutate(taxa=paste(TaxaID))
+
+```
+
+
+
+#plot GMMs
+```{r for GMM}
+effect_table_sig_long_GMM %>%
+    ggplot(aes(x = Comparison, y = TaxaID)) +
+    geom_point(aes(fill = effectSize, shape = as.factor(sign(effectSize)), 
+                   size = abs(effectSize), color = status)) +
+    scale_shape_manual(values = c(25, 24, 24)) + 
+    scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0) +
+    scale_color_manual(values = c("gray22", "gray1"), labels = c("Confounded", "Deconfounded")) +
+    guides(color = guide_legend(override.aes = list(shape = c(1, 8)))) +
+    geom_text(aes(label = stars.pval(corr_p), colour = status), size = 7, key_glyph = "point") +
+    theme_classic() +
+    theme(
+        axis.text.x = element_text(size = 12, angle = 90, hjust = 1, vjust = 0.3),
+        axis.text.y = element_text(size = 12, hjust = 1, vjust = 0.3),
+        axis.title.y = element_text(size = 12, angle = 90, hjust = 1, vjust = 0.3),
+        plot.title.position = "plot",
+        plot.title = element_text(hjust = 0),
+        plot.subtitle = element_text(size = 8),
+        strip.text = element_text(size = 14, face = "bold"),
+        legend.text = element_text(size = 12)
+    ) +
+    labs(
+        x = "Comparisons",
+        y = "Variables",
+        fill = "Effect size", 
+        shape = "Confounding status"
+    )
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/MetadeconfoundR/GMMs_corrected.pdf", height = 8, width = 9)
+```
+
+#plot GMMs without Study
+```{r for GMM}
+
+raw_GMM <- purrr::map2(raw_GMM_Responders_Timepoint,raw_GMM_NR_Timepoint,cbind)
+raw_GMM <- purrr::map2(raw_GMM,raw_GMM_T0_Group,cbind)
+raw_GMM <- purrr::map2(raw_GMM,raw_GMM_T2_Group,cbind)
+raw_GMM <- purrr::map2(raw_GMM,raw_GMM_Group_Group,cbind)
+raw_GMM <- purrr::map2(raw_GMM,raw_GMM_Timepoint_Timepoint,cbind)
+
+raw_GMM_df <- bind_rows(raw_GMM)
+raw_GMM_df <- data.frame(raw_GMM_df$Ps)
+raw_GMM_df  <- raw_GMM_df %>%
+    rownames_to_column()%>%
+    mutate(p_Responders_RT2vsT0=Timepoint_Responders_T2vsT0)%>%
+    mutate(p_NR_NRT2vsT0=Timepoint_NR_T2vsT0)%>%
+    mutate(p_T0_T0RvsNR=Group_T0_RvsNR)%>%
+    mutate(p_T2_T2RvsNR=Group_T2_RvsNR)%>%
+    mutate(p_all_RvsNR=Group_all_RvsNR)%>%
+    mutate(p_all_T2vsT0=Timepoint_all_T2vsT0)%>%
+    select(!c(Timepoint_Responders_T2vsT0, Timepoint_NR_T2vsT0, Group_T0_RvsNR, Group_T2_RvsNR, Group_all_RvsNR, Timepoint_all_T2vsT0))
+
+
+
+corr_GMM <- purrr::map2(corr_GMM_Responders_Timepoint,corr_GMM_NR_Timepoint,cbind)
+corr_GMM <- purrr::map2(corr_GMM,corr_GMM_T0_Group,cbind)
+corr_GMM <- purrr::map2(corr_GMM,corr_GMM_T2_Group,cbind)
+corr_GMM <- purrr::map2(corr_GMM,corr_GMM_Group_Group,cbind)
+corr_GMM <- purrr::map2(corr_GMM,corr_GMM_Timepoint_Timepoint,cbind)
+
+corr_GMM_df <- bind_rows(corr_GMM)
+corr_GMM_df <- data.frame(corr_GMM_df$Qs)
+corr_GMM_df  <- corr_GMM_df %>%
+    rownames_to_column()%>%
+    mutate(q_Responders_RT2vsT0=Timepoint_Responders_T2vsT0)%>%
+    mutate(q_NR_NRT2vsT0=Timepoint_NR_T2vsT0)%>%
+    mutate(q_T0_T0RvsNR=Group_T0_RvsNR)%>%
+    mutate(q_T2_T2RvsNR=Group_T2_RvsNR)%>%
+    mutate(q_all_RvsNR=Group_all_RvsNR)%>%
+    mutate(q_all_T2vsT0=Timepoint_all_T2vsT0)%>%
+    select(!c(Timepoint_Responders_T2vsT0, Timepoint_NR_T2vsT0, Group_T0_RvsNR, Group_T2_RvsNR, Group_all_RvsNR, Timepoint_all_T2vsT0))
+
+
+effect_GMM <- purrr::map2(effect_GMM_Responders_Timepoint,effect_GMM_NR_Timepoint,cbind)
+effect_GMM <- purrr::map2(effect_GMM,effect_GMM_T0_Group,cbind)
+effect_GMM <- purrr::map2(effect_GMM,effect_GMM_T2_Group,cbind)
+effect_GMM <- purrr::map2(effect_GMM,effect_GMM_Group_Group,cbind)
+effect_GMM <- purrr::map2(effect_GMM,effect_GMM_Timepoint_Timepoint,cbind)
+
+effect_GMM_df <- bind_rows(effect_GMM)
+effect_GMM_df <- data.frame(effect_GMM_df$Ds)
+effect_GMM_df  <- effect_GMM_df %>%
+    rownames_to_column()%>%
+    mutate(d_Responders_RT2vsT0=Timepoint_Responders_T2vsT0)%>%
+    mutate(d_NR_NRT2vsT0=Timepoint_NR_T2vsT0)%>%
+    mutate(d_T0_T0RvsNR=Group_T0_RvsNR)%>%
+    mutate(d_T2_T2RvsNR=Group_T2_RvsNR)%>%
+    mutate(d_all_RvsNR=Group_all_RvsNR)%>%
+    mutate(d_all_T2vsT0=Timepoint_all_T2vsT0)%>%
+    select(!c(Timepoint_Responders_T2vsT0, Timepoint_NR_T2vsT0, Group_T0_RvsNR, Group_T2_RvsNR, Group_all_RvsNR, Timepoint_all_T2vsT0))
+
+statusGMM <- purrr::map2(statusGMM_Responders_Timepoint,statusGMM_NR_Timepoint,cbind)
+statusGMM <- purrr::map2(statusGMM,statusGMM_T0_Group,cbind)
+statusGMM <- purrr::map2(statusGMM,statusGMM_T2_Group,cbind)
+statusGMM <- purrr::map2(statusGMM,statusGMM_Group_Group,cbind)
+statusGMM <- purrr::map2(statusGMM,statusGMM_Timepoint_Timepoint,cbind)
+
+statusGMM_df <- bind_rows(statusGMM)
+statusGMM_df <- data.frame(statusGMM_df$status)
+statusGMM_df  <- statusGMM_df %>%
+    rownames_to_column()%>%
+    mutate(status_Responders_RT2vsT0=Timepoint_Responders_T2vsT0)%>%
+    mutate(status_NR_NRT2vsT0=Timepoint_NR_T2vsT0)%>%
+    mutate(status_T0_T0RvsNR=Group_T0_RvsNR)%>%
+    mutate(status_T2_T2RvsNR=Group_T2_RvsNR)%>%
+    mutate(status_all_RvsNR=Group_all_RvsNR)%>%
+    mutate(status_all_T2vsT0=Timepoint_all_T2vsT0)%>%
+    select(!c(Timepoint_Responders_T2vsT0, Timepoint_NR_T2vsT0, Group_T0_RvsNR, Group_T2_RvsNR, Group_all_RvsNR, Timepoint_all_T2vsT0))
+
+##Instead of using only one taxa, I use the function created by Victor to asign the name of the taxa by the last annotation in the tax table
+latest_annotations <- get_latest_annotation_noASV(GMMs_corrected)
+latest_annotations<-as.data.frame(latest_annotations)
+
+#create two-column-dataframe containing corresponding "human-readable" names to the "machine-readable" feature names used as row.names in metaDeconfOutput.  
+taxtableGMM <- latest_annotations
+taxtableGMM$rowname <- latest_annotations$ASV
+taxtableGMM<- cbind(rowname=taxtableGMM$rowname,subset(taxtableGMM,select = -c(rowname)))
+
+effect_table_GMM <- raw_GMM_df%>%
+    full_join(corr_GMM_df, by="rowname")%>%
+    full_join(effect_GMM_df, by="rowname")%>%
+    full_join(statusGMM_df, by="rowname")%>%
+    full_join(taxtableGMM, by="rowname")
+
+# select the entries which have OK_nc in status
+effect_table_sig_GMM <- effect_table_GMM%>%
+    filter(status_Responders_RT2vsT0=="OK_nc"|status_NR_NRT2vsT0=="OK_nc"|status_T0_T0RvsNR =="OK_nc" |status_T2_T2RvsNR =="OK_nc" |status_all_RvsNR =="OK_nc" |status_all_T2vsT0 =="OK_nc")
+
+   
+#pivot long format
+
+effect_table_sig_long_GMM <- effect_table_sig_GMM%>%
+  pivot_longer(cols = starts_with("status"), names_to = "comparison_status", values_to = "status")%>%
+  separate(comparison_status, c("variable" ,"Group", "Comparison"), "_")%>%
+  mutate(comparison_status=paste(Group,Comparison, sep="_"))%>%
+  select(-c(variable, Group, Comparison))%>%
+  pivot_longer(cols = starts_with("p"), names_to = "comparison_p", values_to = "raw_p")%>%
+  separate(comparison_p, c("variable" ,"Group", "Comparison"), "_")%>%
+  mutate(comparison_p=paste(Group,Comparison, sep="_"))%>%
+  select(-c(variable, Group, Comparison))%>%
+  filter(comparison_p==comparison_status)%>%
+  pivot_longer(cols = starts_with("d"), names_to = "comparison_effectSize", values_to = "effectSize")%>%
+  separate(comparison_effectSize, c("variable" ,"Group", "Comparison"), "_")%>%
+  mutate(comparison_effectSize=paste(Group,Comparison, sep="_"))%>%
+  select(-c(variable, Group, Comparison))%>%
+  filter(comparison_p==comparison_effectSize)%>%
+  pivot_longer(cols = starts_with("q"), names_to = "comparison_q", values_to = "corr_p")%>%
+  separate(comparison_q, c("variable" ,"Group", "Comparison"), "_")%>%
+  mutate(comparison_q=paste(Group,Comparison, sep="_"))%>%
+  select(-c(variable))%>%
+  filter(comparison_p==comparison_q)%>%
+  select(-c(comparison_q, comparison_effectSize,comparison_status))%>%
+  mutate(fdr= as_factor(case_when(corr_p <= 0.05 ~ "*", corr_p <= 0.01 ~ "**", corr_p <= 0.001 ~ "***", corr_p <= 0.1 ~ ".")))%>%
+  mutate(taxa=paste(TaxaID))
+
+
+effect_table_sig_long_GMM %>%
+    ggplot(aes(x = Comparison, y = TaxaID)) +
+    geom_point(aes(fill = effectSize, shape = as.factor(sign(effectSize)), 
+                   size = abs(effectSize), color = status)) +
+    scale_shape_manual(values = c(25, 24, 24)) + 
+    scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0) +
+    scale_color_manual(values = c("gray22", "gray1"), labels = c("Confounded", "Deconfounded")) +
+    guides(color = guide_legend(override.aes = list(shape = c(1, 8)))) +
+    geom_text(aes(label = stars.pval(corr_p), colour = status), size = 7, key_glyph = "point") +
+    theme_classic() +
+    theme(
+        axis.text.x = element_text(size = 12, angle = 90, hjust = 1, vjust = 0.3),
+        axis.text.y = element_text(size = 12, hjust = 1, vjust = 0.3),
+        axis.title.y = element_text(size = 12, angle = 90, hjust = 1, vjust = 0.3),
+        plot.title.position = "plot",
+        plot.title = element_text(hjust = 0),
+        plot.subtitle = element_text(size = 8),
+        strip.text = element_text(size = 14, face = "bold"),
+        legend.text = element_text(size = 12)
+    ) +
+    labs(
+        x = "Comparisons",
+        y = "Variables",
+        fill = "Effect size", 
+        shape = "Confounding status"
+    )
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/MetadeconfoundR/GMMs_corrected_woStudy.pdf", height = 8, width = 9)
+```
+
+```{r Changing names ASVs}
+library(tidyr)
+library(tibble)
+library(purrr)
+require(phyloseq)
+require(tidyverse)
+require(magrittr)
+
+get_latest_annotation_ASV <- function(phyloseq_obj) {
+  tax_table <- phyloseq_obj@tax_table %>%
+    as.data.frame() %>%
+    rownames_to_column('ASV') %>%
+    as_tibble() %>%
+    tidyr::gather('Rank', 'Value', -ASV) %>%
+    nest(data = -ASV) %>%
+    mutate(TaxaID = map_chr(data, function(x) {
+      x %>%
+        dplyr::filter(!is.na(Value)) %>%
+        magrittr::use_series(Value) %>%
+        tail(1)
+    })) %>%
+    mutate(TaxaUp = map_chr(data, function(x) {
+      x %>%
+        dplyr::filter(!is.na(Value)) %>%
+        magrittr::use_series(Value) %>%
+        tail(2) %>% head(1)
+    })) %>%
+    mutate(TaxaID = paste(ASV, TaxaID)) %>%
+    dplyr::select(-c(data, TaxaUp))
+  
+  return(tax_table)
+}
+
+```
+
+
+#Rename ARGs
+```{r Changing names ARGs}
+library(tidyr)
+library(tibble)
+library(purrr)
+require(phyloseq)
+require(tidyverse)
+require(magrittr)
+
+get_ARG_TaxaID <- function(phyloseq_obj) {
+  tax_df <- as.data.frame(phyloseq_obj@tax_table)
+
+  # Ensure the necessary columns exist
+  required_cols <- c("ARO_ID", "Best_Hit_ARO", "Drug Class")
+  missing_cols <- setdiff(required_cols, colnames(tax_df))
+  if (length(missing_cols) > 0) {
+    stop("Missing columns in tax_table: ", paste(missing_cols, collapse = ", "))
+  }
+
+  # Create TaxaID column by pasting the 3 columns together
+  result <- tax_df %>%
+    dplyr::mutate(
+      TaxaID = paste(ARO_ID, Best_Hit_ARO, `Drug Class`, sep = "_")
+    ) %>%
+    dplyr::select(ARO_ID, TaxaID) %>%
+    tibble::as_tibble()
+
+  return(result)
+}
+
+```
+
+
+#ARGs  Group: R vs NR
+```{r MetadeconfoundR R vs NR all}
+ps_Group<- subset_samples(ARGs_ok_corrected , Timepoint%in% c("T0","T2"))
+ps_Group <-subset_samples(ps_Group, Group_cutoff_4 %in% c("NR", "R"))
+
+
+metadata_Group<-data.frame(sample_data(ps_Group))
+
+metadata_Group <- metadata_Group %>% 
+  mutate(Group_all_RvsNR = ifelse(Group_cutoff_4 == "R", 1, 0))%>%
+  select(Group_all_RvsNR)
+
+
+# run metadeconfoundR
+features <- as.data.frame(otu_table(ps_Group))
+
+##Instead of using only one ARGs, I use the function created by Victor to asign the name of the ARGs by the last annotation in the tax table
+latest_annotations <- get_ARG_TaxaID(ps_Group)
+latest_annotations<-as.data.frame(latest_annotations)
+
+
+#create two-column-dataframe containing corresponding "human-readable" names to the "machine-readable" feature names used as row.names in metaDeconfOutput.  
+taxtable <- latest_annotations
+taxtable$ASV <- row.names(taxtable)
+taxtable<- cbind(ASV=taxtable$ASV,subset(taxtable,select = -c(ASV)))
+
+features <- as.data.frame(t(features))
+### run it
+metad <- MetaDeconfound(featureMat = features, metaMat = metadata_Group)
+
+raw_p_Group_Group <- metad[1]
+corr_p_Group_Group <- metad[2]
+effect_size_Group_Group <- metad[3]
+status_Group_Group <- metad[4]
+```
+
+#ARGs  Timepoint: T2 vs T0
+```{r MetadeconfoundR T2 vs T0 all}
+ps_Timepoint<- subset_samples(ARGs_ok_corrected , Timepoint%in% c("T0","T2"))
+ps_Timepoint <-subset_samples(ps_Timepoint, Group_cutoff_4 %in% c("NR", "R"))
+
+
+metadata_Timepoint<-data.frame(sample_data(ps_Timepoint))
+
+metadata_Timepoint <- metadata_Timepoint %>% 
+  mutate(Timepoint_all_T2vsT0 = ifelse(Timepoint == "T2", 1, 0))%>%
+  select(Timepoint_all_T2vsT0)
+
+
+# run metadeconfoundR
+features <- as.data.frame(otu_table(ps_Timepoint))
+
+##Instead of using only one ARGs, I use the function created by Victor to asign the name of the ARGs by the last annotation in the tax table
+latest_annotations <- get_ARG_TaxaID(ps_Timepoint)
+latest_annotations<-as.data.frame(latest_annotations)
+
+
+#create two-column-dataframe containing corresponding "human-readable" names to the "machine-readable" feature names used as row.names in metaDeconfOutput.  
+taxtable <- latest_annotations
+taxtable$ASV <- row.names(taxtable)
+taxtable<- cbind(ASV=taxtable$ASV,subset(taxtable,select = -c(ASV)))
+
+features <- as.data.frame(t(features))
+### run it
+metad <- MetaDeconfound(featureMat = features, metaMat = metadata_Timepoint)
+
+raw_p_Timepoint_Timepoint <- metad[1]
+corr_p_Timepoint_Timepoint <- metad[2]
+effect_size_Timepoint_Timepoint <- metad[3]
+status_Timepoint_Timepoint <- metad[4]
+```
+
+#ARGs  study: spain vs UK
+```{r MetadeconfoundR Spain vs UK }
+ps_Study<- subset_samples(ARGs_ok_corrected , Timepoint%in% c("T0","T2"))
+ps_Study <-subset_samples(ps_Study, Group_cutoff_4 %in% c("NR", "R"))
+
+
+metadata_Study<-data.frame(sample_data(ps_Study))
+
+metadata_Study <- metadata_Study %>% 
+  mutate(Study_all_SpainvsUK = ifelse(Study == "Spain", 1, 0))%>%
+  select(Study_all_SpainvsUK)
+
+
+# run metadeconfoundR
+features <- as.data.frame(otu_table(ps_Study))
+
+##Instead of using only one ARGs, I use the function created by Victor to asign the name of the ARGs by the last annotation in the tax table
+latest_annotations <- get_ARG_TaxaID(ps_Study)
+latest_annotations<-as.data.frame(latest_annotations)
+
+
+#create two-column-dataframe containing corresponding "human-readable" names to the "machine-readable" feature names used as row.names in metaDeconfOutput.  
+taxtable <- latest_annotations
+taxtable$ASV <- row.names(taxtable)
+taxtable<- cbind(ASV=taxtable$ASV,subset(taxtable,select = -c(ASV)))
+
+features <- as.data.frame(t(features))
+### run it
+metad <- MetaDeconfound(featureMat = features, metaMat = metadata_Study)
+
+raw_p_Study_Study <- metad[1]
+corr_p_Study_Study <- metad[2]
+effect_size_Study_Study <- metad[3]
+status_Study_Study <- metad[4]
+```
+
+
+#Construction of table for plotting
+```{r bind effectsize table}
+
+raw_p <- purrr::map2(raw_p_Group_Group,raw_p_Timepoint_Timepoint,cbind)
+raw_p <- purrr::map2(raw_p,raw_p_Study_Study,cbind)
+
+raw_p_df <- bind_rows(raw_p)
+raw_p_df <- data.frame(raw_p_df$Ps)
+raw_p_df  <- raw_p_df %>%
+  rownames_to_column()%>%
+  mutate(p_all_RvsNR=Group_all_RvsNR)%>%
+  mutate(p_all_T2vsT0=Timepoint_all_T2vsT0)%>%
+  mutate(p_all_SPAINvsUK=Study_all_SpainvsUK)%>%
+  select(!c(Group_all_RvsNR, Timepoint_all_T2vsT0, Study_all_SpainvsUK))
+
+
+corr_p <- purrr::map2(corr_p_Group_Group,corr_p_Timepoint_Timepoint,cbind)
+corr_p <- purrr::map2(corr_p,corr_p_Study_Study,cbind)
+
+corr_p_df <- bind_rows(corr_p)
+corr_p_df <- data.frame(corr_p_df$Qs)
+corr_p_df  <- corr_p_df %>%
+  rownames_to_column()%>%
+  mutate(q_all_RvsNR=Group_all_RvsNR)%>%
+  mutate(q_all_T2vsT0=Timepoint_all_T2vsT0)%>%
+  mutate(q_all_SPAINvsUK=Study_all_SpainvsUK)%>%
+  select(!c(Group_all_RvsNR, Timepoint_all_T2vsT0, Study_all_SpainvsUK))
+
+
+effect_size <- purrr::map2(effect_size_Group_Group,effect_size_Timepoint_Timepoint,cbind)
+effect_size <- purrr::map2(effect_size,effect_size_Study_Study,cbind)
+
+effect_size_df <- bind_rows(effect_size)
+effect_size_df <- data.frame(effect_size_df$Ds)
+effect_size_df  <- effect_size_df %>%
+  rownames_to_column()%>%
+  mutate(d_all_RvsNR=Group_all_RvsNR)%>%
+  mutate(d_all_T2vsT0=Timepoint_all_T2vsT0)%>%
+  mutate(d_all_SPAINvsUK=Study_all_SpainvsUK)%>%
+  select(!c(Group_all_RvsNR, Timepoint_all_T2vsT0, Study_all_SpainvsUK))
+
+
+status <- purrr::map2(status_Group_Group,status_Timepoint_Timepoint,cbind)
+status <- purrr::map2(status,status_Study_Study,cbind)
+
+status_df <- bind_rows(status)
+status_df <- data.frame(status_df$status)
+status_df  <- status_df %>%
+  rownames_to_column()%>%
+  mutate(status_all_RvsNR=Group_all_RvsNR)%>%
+  mutate(status_all_T2vsT0=Timepoint_all_T2vsT0)%>%
+  mutate(status_all_SPAINvsUK=Study_all_SpainvsUK)%>%
+  select(!c(Group_all_RvsNR, Timepoint_all_T2vsT0, Study_all_SpainvsUK))
+
+##Instead of using only one ARGs, I use the function created by Victor to asign the name of the ARGs by the last annotation in the tax table
+latest_annotations <- get_ARG_TaxaID(ARGs_ok_corrected )
+latest_annotations<-as.data.frame(latest_annotations)
+
+#create two-column-dataframe containing corresponding "human-readable" names to the "machine-readable" feature names used as row.names in metaDeconfOutput.  
+taxtable <- latest_annotations
+taxtable$rowname <- taxtable$ARO_ID
+taxtable<- cbind(rowname=taxtable$rowname,subset(taxtable,select = -c(rowname)))
+
+effect_table <- raw_p_df%>%
+  full_join(corr_p_df, by="rowname")%>%
+  full_join(effect_size_df, by="rowname")%>%
+  full_join(status_df, by="rowname")%>%
+  full_join(taxtable, by="rowname")
+
+# select the entries which have OK_nc in status
+effect_table_sig <- effect_table%>%
+  filter(status_all_RvsNR =="OK_nc" |status_all_T2vsT0 =="OK_nc" | status_all_SPAINvsUK=="OK_nc")
+
+
+#pivot long format
+
+effect_table_sig_long <- effect_table_sig%>%
+  pivot_longer(cols = starts_with("status"), names_to = "comparison_status", values_to = "status")%>%
+  separate(comparison_status, c("variable" ,"Group", "Comparison"), "_")%>%
+  mutate(comparison_status=paste(Group,Comparison, sep="_"))%>%
+  select(-c(variable, Group, Comparison))%>%
+  pivot_longer(cols = starts_with("p"), names_to = "comparison_p", values_to = "raw_p")%>%
+  separate(comparison_p, c("variable" ,"Group", "Comparison"), "_")%>%
+  mutate(comparison_p=paste(Group,Comparison, sep="_"))%>%
+  select(-c(variable, Group, Comparison))%>%
+  filter(comparison_p==comparison_status)%>%
+  pivot_longer(cols = starts_with("d"), names_to = "comparison_effectSize", values_to = "effectSize")%>%
+  separate(comparison_effectSize, c("variable" ,"Group", "Comparison"), "_")%>%
+  mutate(comparison_effectSize=paste(Group,Comparison, sep="_"))%>%
+  select(-c(variable, Group, Comparison))%>%
+  filter(comparison_p==comparison_effectSize)%>%
+  pivot_longer(cols = starts_with("q"), names_to = "comparison_q", values_to = "corr_p")%>%
+  separate(comparison_q, c("variable" ,"Group", "Comparison"), "_")%>%
+  mutate(comparison_q=paste(Group,Comparison, sep="_"))%>%
+  select(-c(variable))%>%
+  filter(comparison_p==comparison_q)%>%
+  select(-c(comparison_q, comparison_effectSize,comparison_status))%>%
+  mutate(fdr= as_factor(case_when(corr_p <= 0.05 ~ "*", corr_p <= 0.01 ~ "**", corr_p <= 0.001 ~ "***", corr_p <= 0.1 ~ ".")))%>%
+  mutate(taxa=paste(TaxaID))
+
+```
+
+#plot ARGs
+```{r one for tax and other for GMM}
+#Too long names, delete "Drug Class" from first function 
+#plot
+effect_table_sig_long %>%
+  ggplot(aes(x = Comparison, y = TaxaID)) +
+  geom_point(aes(fill = effectSize, shape = as.factor(sign(effectSize)), 
+                 size = abs(effectSize), color = status)) +
+  scale_shape_manual(values = c(25, 24, 24)) + 
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0) +
+  scale_color_manual(values = c("gray22", "gray1"), labels = c("Confounded", "Deconfounded")) +
+  guides(color = guide_legend(override.aes = list(shape = c(1, 8)))) +
+  geom_text(aes(label = stars.pval(corr_p), colour = status), size = 7, key_glyph = "point") +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(size = 12, angle = 90, hjust = 1, vjust = 0.3),
+    axis.text.y = element_text(size = 12, hjust = 1, vjust = 0.3),
+    axis.title.y = element_text(size = 12, angle = 90, hjust = 1, vjust = 0.3),
+    plot.title.position = "plot",
+    plot.title = element_text(hjust = 0),
+    plot.subtitle = element_text(size = 8),
+    strip.text = element_text(size = 14, face = "bold"),
+    legend.text = element_text(size = 12)
+  ) +
+  labs(
+    x = "Comparisons",
+    y = "Variables",
+    fill = "Effect size", 
+    shape = "Confounding status"
+  )
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/MetadeconfoundR/ARGs_corrected.pdf", height = 5, width = 13)
+
+
+
+``` 
+
+
+
+#plot ARGs without Study
+```{r plot ARGs without Study}
+
+raw_p <- purrr::map2(raw_p_Group_Group,raw_p_Timepoint_Timepoint,cbind)
+
+raw_p_df <- bind_rows(raw_p)
+raw_p_df <- data.frame(raw_p_df$Ps)
+raw_p_df  <- raw_p_df %>%
+  rownames_to_column()%>%
+  mutate(p_all_RvsNR=Group_all_RvsNR)%>%
+  mutate(p_all_T2vsT0=Timepoint_all_T2vsT0)%>%
+  select(!c(Group_all_RvsNR, Timepoint_all_T2vsT0,))
+
+
+corr_p <- purrr::map2(corr_p_Group_Group,corr_p_Timepoint_Timepoint,cbind)
+
+corr_p_df <- bind_rows(corr_p)
+corr_p_df <- data.frame(corr_p_df$Qs)
+corr_p_df  <- corr_p_df %>%
+  rownames_to_column()%>%
+  mutate(q_all_RvsNR=Group_all_RvsNR)%>%
+  mutate(q_all_T2vsT0=Timepoint_all_T2vsT0)%>%
+  select(!c(Group_all_RvsNR, Timepoint_all_T2vsT0))
+
+
+effect_size <- purrr::map2(effect_size_Group_Group,effect_size_Timepoint_Timepoint,cbind)
+
+effect_size_df <- bind_rows(effect_size)
+effect_size_df <- data.frame(effect_size_df$Ds)
+effect_size_df  <- effect_size_df %>%
+  rownames_to_column()%>%
+  mutate(d_all_RvsNR=Group_all_RvsNR)%>%
+  mutate(d_all_T2vsT0=Timepoint_all_T2vsT0)%>%
+  select(!c(Group_all_RvsNR, Timepoint_all_T2vsT0))
+
+
+status <- purrr::map2(status_Group_Group,status_Timepoint_Timepoint,cbind)
+
+status_df <- bind_rows(status)
+status_df <- data.frame(status_df$status)
+status_df  <- status_df %>%
+  rownames_to_column()%>%
+  mutate(status_all_RvsNR=Group_all_RvsNR)%>%
+  mutate(status_all_T2vsT0=Timepoint_all_T2vsT0)%>%
+  select(!c(Group_all_RvsNR, Timepoint_all_T2vsT0))
+
+##Instead of using only one ARGs, I use the function created by Victor to asign the name of the ARGs by the last annotation in the tax table
+latest_annotations <- get_ARG_TaxaID(ARGs_ok_corrected )
+latest_annotations<-as.data.frame(latest_annotations)
+
+#create two-column-dataframe containing corresponding "human-readable" names to the "machine-readable" feature names used as row.names in metaDeconfOutput.  
+taxtable <- latest_annotations
+taxtable$rowname <- latest_annotations$ASV
+taxtable$rowname<-taxtable$ARO_ID
+taxtable<- cbind(rowname=taxtable$rowname,subset(taxtable,select = -c(rowname)))
+
+effect_table <- raw_p_df%>%
+  full_join(corr_p_df, by="rowname")%>%
+  full_join(effect_size_df, by="rowname")%>%
+  full_join(status_df, by="rowname")%>%
+  full_join(taxtable, by="rowname")
+
+# select the entries which have OK_nc in status
+effect_table_sig <- effect_table%>%
+  filter(status_all_RvsNR =="OK_nc" |status_all_T2vsT0 =="OK_nc" )
+
+
+#pivot long format
+
+effect_table_sig_long <- effect_table_sig%>%
+  pivot_longer(cols = starts_with("status"), names_to = "comparison_status", values_to = "status")%>%
+  separate(comparison_status, c("variable" ,"Group", "Comparison"), "_")%>%
+  mutate(comparison_status=paste(Group,Comparison, sep="_"))%>%
+  select(-c(variable, Group, Comparison))%>%
+  pivot_longer(cols = starts_with("p"), names_to = "comparison_p", values_to = "raw_p")%>%
+  separate(comparison_p, c("variable" ,"Group", "Comparison"), "_")%>%
+  mutate(comparison_p=paste(Group,Comparison, sep="_"))%>%
+  select(-c(variable, Group, Comparison))%>%
+  filter(comparison_p==comparison_status)%>%
+  pivot_longer(cols = starts_with("d"), names_to = "comparison_effectSize", values_to = "effectSize")%>%
+  separate(comparison_effectSize, c("variable" ,"Group", "Comparison"), "_")%>%
+  mutate(comparison_effectSize=paste(Group,Comparison, sep="_"))%>%
+  select(-c(variable, Group, Comparison))%>%
+  filter(comparison_p==comparison_effectSize)%>%
+  pivot_longer(cols = starts_with("q"), names_to = "comparison_q", values_to = "corr_p")%>%
+  separate(comparison_q, c("variable" ,"Group", "Comparison"), "_")%>%
+  mutate(comparison_q=paste(Group,Comparison, sep="_"))%>%
+  select(-c(variable))%>%
+  filter(comparison_p==comparison_q)%>%
+  select(-c(comparison_q, comparison_effectSize,comparison_status))%>%
+  mutate(fdr= as_factor(case_when(corr_p <= 0.05 ~ "*", corr_p <= 0.01 ~ "**", corr_p <= 0.001 ~ "***", corr_p <= 0.1 ~ ".")))%>%
+  mutate(taxa=paste(TaxaID))
+
+#plot
+effect_table_sig_long %>%
+  ggplot(aes(x = Comparison, y = TaxaID)) +
+  geom_point(aes(fill = effectSize, shape = as.factor(sign(effectSize)), 
+                 size = abs(effectSize), color = status)) +
+  scale_shape_manual(values = c(25, 24, 24)) + 
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0) +
+  scale_color_manual(values = c("gray22", "gray1"), labels = c("Confounded", "Deconfounded")) +
+  guides(color = guide_legend(override.aes = list(shape = c(1, 8)))) +
+  geom_text(aes(label = stars.pval(corr_p), colour = status), size = 7, key_glyph = "point") +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(size = 12, angle = 90, hjust = 1, vjust = 0.3),
+    axis.text.y = element_text(size = 12, hjust = 1, vjust = 0.3),
+    axis.title.y = element_text(size = 12, angle = 90, hjust = 1, vjust = 0.3),
+    plot.title.position = "plot",
+    plot.title = element_text(hjust = 0),
+    plot.subtitle = element_text(size = 8),
+    strip.text = element_text(size = 14, face = "bold"),
+    legend.text = element_text(size = 12)
+  ) +
+  labs(
+    x = "Comparisons",
+    y = "Variables",
+    fill = "Effect size", 
+    shape = "Confounding status"
+  )
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/MetadeconfoundR/ARGs_corrected_woStudy.pdf", height = 4, width = 11)
+```
+
+#All Taxonomy
+```{r tax metadeconfoundR}
+library("phyloseq"); packageVersion("phyloseq")
+library(readr)
+library(metadeconfoundR)
+library("ggplot2"); packageVersion("ggplot2")
+ps_clr_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ps_clr_corrected.Rds")
+ps_clr_corrected<- subset_samples(ps_clr_corrected, Group_cutoff_4 %in% c("R", "NR"))
+ps_clr_corrected<- subset_samples(ps_clr_corrected, Timepoint %in% c("T0", "T2"))
+ps_clr_corrected<- subset_samples(ps_clr_corrected, Longitudinal %in% c("Yes"))
+metadata<-as.data.frame(sample_data(ps_clr_corrected))
+metadata<-metadata[,c("DmGenderSexID","Group_cutoff_4", "Age", "PHES", "Ammonia","IL6", "Haemoglobin", "Leukocytes", "Absolute_Neutrophils", "Absolute_Lymphocytes", "Absolute_Monocytes", "Absolute_Eosinophils", "INR", "Fibrinogen", "Urea", "Creatinine", "Total_bilirubin", "Albumin", "AST", "ALT", "GGT", "Alkaline_phosphatase", "Sodium", "Potassium", "Timepoint", "Volunteer", "Study")]
+metadata$Age <- as.numeric(metadata$Age)
+
+metadata1<-metadata
+
+# 0 is female 1 is male
+metadata$DmGenderSexID[metadata$DmGenderSexID == 2] <- 0
+sample_data(ps_clr_corrected) <- sample_data(metadata)
+metadata<-data.frame(metadata)
+metadata <- metadata %>% mutate(Group_cutoff_4 = ifelse(Group_cutoff_4=="R",1,0))
+metadata <- metadata %>% mutate(Study = ifelse(Study=="Spain",1,0))
+metadata <- metadata %>% mutate(Timepoint = ifelse(Timepoint=="T2",1,0))
+
+#Data OTUs
+latest_annotations <- get_latest_annotation_ASV(ps_clr_corrected)
+latest_annotations<-as.data.frame(latest_annotations)
+short_names<-as.data.frame(otu_table(ps_clr_corrected))
+rownames(short_names)<-latest_annotations$TaxaID
+Meta_Species <- t(short_names) 
+
+# check correct ordering
+all(rownames(metadata) == rownames(Meta_Species))
+## [1] TRUE
+all(order(rownames(metadata)) == order(rownames(Meta_Species)))
+## [1] TRUE
+Meta_Species<- as.data.frame(Meta_Species)
+
+Metadec_tax <- MetaDeconfound(featureMat = as.data.frame(Meta_Species),
+                                     metaMat = as.data.frame(metadata), nnodes = 3, randomVar = c("Volunteer", "Study"))
+
+#Plot
+View(Metadec_tax)
+
+Output_heatmap <- BuildHeatmap(Metadec_tax)
+plot(Output_heatmap)
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/MetadeconfoundR/Taxa_metadata.pdf", height = 8, width = 10)
+
+raw_p_Cognition_tax <- Metadec_tax[1]
+corr_p_Cognition_tax <- Metadec_tax[2]
+effect_size_Cognition_tax <- Metadec_tax[3]
+status_Cognition_tax <- Metadec_tax[4]
+
+saveRDS(Metadec_tax, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/metadeconfoundR/Metadec_tax.Rds")
+
+
+```
+
+
+# All GMMs
+```{r GMMs metadeconfoundR}
+library("phyloseq"); packageVersion("phyloseq")
+library(readr)
+library(metadeconfoundR)
+library("ggplot2"); packageVersion("ggplot2")
+GMMs_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/GMMs_corrected.Rds")
+GMMs_corrected<- subset_samples(GMMs_corrected, Group_cutoff_4 %in% c("R", "NR"))
+GMMs_corrected<- subset_samples(GMMs_corrected, Timepoint %in% c("T0", "T2"))
+GMMs_corrected<- subset_samples(GMMs_corrected, Longitudinal %in% c("Yes"))
+metadata<-as.data.frame(sample_data(GMMs_corrected))
+metadata<-metadata[,c("DmGenderSexID","Group_cutoff_4", "Age", "PHES", "Ammonia","IL6", "Haemoglobin", "Leukocytes", "Absolute_Neutrophils", "Absolute_Lymphocytes", "Absolute_Monocytes", "Absolute_Eosinophils", "INR", "Fibrinogen", "Urea", "Creatinine", "Total_bilirubin", "Albumin", "AST", "ALT", "GGT", "Alkaline_phosphatase", "Sodium", "Potassium", "Timepoint", "Volunteer", "Study")]
+
+
+metadata1<-metadata
+
+# 0 is female 1 is male
+metadata$DmGenderSexID[metadata$DmGenderSexID == 2] <- 0
+sample_data(GMMs_corrected) <- sample_data(metadata)
+metadata<-data.frame(metadata)
+metadata <- metadata %>% mutate(Group_cutoff_4 = ifelse(Group_cutoff_4=="R",1,0))
+metadata <- metadata %>% mutate(Study = ifelse(Study=="Spain",1,0))
+metadata <- metadata %>% mutate(Timepoint = ifelse(Timepoint=="T2",1,0))
+
+#Names Modules
+Meta_GMMs <- as.data.frame((otu_table(GMMs_corrected)))
+long_names<-as.data.frame(tax_table(GMMs_corrected))
+rownames(Meta_GMMs)= long_names$V2[match(rownames(Meta_GMMs),rownames(long_names))]
+Meta_GMMs<-t(Meta_GMMs)
+
+# check correct ordering
+all(rownames(metadata) == rownames(Meta_GMMs))
+## [1] TRUE
+all(order(rownames(metadata)) == order(rownames(Meta_GMMs)))
+## [1] TRUE
+Meta_GMMs<- as.data.frame(Meta_GMMs)
+
+Metadec_GMMs <- MetaDeconfound(featureMat = as.data.frame(Meta_GMMs),
+                              metaMat = as.data.frame(metadata), nnodes = 3, randomVar = c("Volunteer", "Study"))
+
+#Plot
+Output_heatmap <- BuildHeatmap(Metadec_GMMs)
+plot(Output_heatmap)
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/MetadeconfoundR/GMM_metadata.pdf", height = 8, width = 10)
+
+raw_p_Cognition_tax <- Metadec_GMMs[1]
+corr_p_Cognition_tax <- Metadec_GMMs[2]
+effect_size_Cognition_tax <- Metadec_GMMs[3]
+status_Cognition_tax <- Metadec_GMMs[4]
+
+saveRDS(Metadec_GMMs, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/metadeconfoundR/Metadec_GMMs.Rds")
+
+
+```
+
+# All ARGs_ok
+```{r ARGs_ok metadeconfoundR}
+library("phyloseq"); packageVersion("phyloseq")
+library(readr)
+library(metadeconfoundR)
+library("ggplot2"); packageVersion("ggplot2")
+ARGs_ok_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ARGs_ok_corrected.Rds")
+ARGs_ok_corrected<- subset_samples(ARGs_ok_corrected, Group_cutoff_4 %in% c("R", "NR"))
+ARGs_ok_corrected<- subset_samples(ARGs_ok_corrected, Timepoint %in% c("T0", "T2"))
+ARGs_ok_corrected<- subset_samples(ARGs_ok_corrected, Longitudinal %in% c("Yes"))
+metadata<-as.data.frame(sample_data(ARGs_ok_corrected))
+metadata<-metadata[,c("DmGenderSexID","Group_cutoff_4", "Age", "PHES", "Ammonia","IL6", "Haemoglobin", "Leukocytes", "Absolute_Neutrophils", "Absolute_Lymphocytes", "Absolute_Monocytes", "Absolute_Eosinophils", "INR", "Fibrinogen", "Urea", "Creatinine", "Total_bilirubin", "Albumin", "AST", "ALT", "GGT", "Alkaline_phosphatase", "Sodium", "Potassium", "Timepoint", "Volunteer", "Study")]
+
+
+# 0 is female 1 is male
+metadata$DmGenderSexID[metadata$DmGenderSexID == 2] <- 0
+sample_data(ARGs_ok_corrected) <- sample_data(metadata)
+metadata<-data.frame(metadata)
+metadata <- metadata %>% mutate(Group_cutoff_4 = ifelse(Group_cutoff_4=="R",1,0))
+metadata <- metadata %>% mutate(Study = ifelse(Study=="Spain",1,0))
+metadata <- metadata %>% mutate(Timepoint = ifelse(Timepoint=="T2",1,0))
+
+#Names Modules
+Meta_ARGs_ok <- as.data.frame((otu_table(ARGs_ok_corrected)))
+long_names<-as.data.frame(tax_table(ARGs_ok_corrected))
+long_names$Antibiotic_short <- substr(long_names$Antibiotic, 1, 25)
+
+
+# Get the matching indices of Meta_ARGs_ok rownames in long_names rownames
+matched_indices <- match(rownames(Meta_ARGs_ok), rownames(long_names))
+
+# Safely create new rownames by merging only matched rows
+new_rownames <- ifelse(
+  !is.na(matched_indices),
+  paste(long_names$ARO_ID[matched_indices], long_names$Antibiotic_short[matched_indices], sep = " | "),
+  rownames(Meta_ARGs_ok)  # fallback if no match
+)
+
+# Assign new rownames
+rownames(Meta_ARGs_ok) <- new_rownames
+
+Meta_ARGs_ok<-t(Meta_ARGs_ok)
+
+# check correct ordering
+all(rownames(metadata) == rownames(Meta_ARGs_ok))
+## [1] TRUE
+all(order(rownames(metadata)) == order(rownames(Meta_ARGs_ok)))
+## [1] TRUE
+Meta_ARGs_ok<- as.data.frame(Meta_ARGs_ok)
+
+Metadec_ARGs_ok <- MetaDeconfound(featureMat = as.data.frame(Meta_ARGs_ok),
+                                   metaMat = as.data.frame(metadata), nnodes = 3, randomVar = c("Volunteer", "Study"))
+
+#Plot
+View(Metadec_ARGs_ok)
+
+Output_heatmap <- BuildHeatmap(Metadec_ARGs_ok)
+plot(Output_heatmap)
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/MetadeconfoundR/ARG_metadata.pdf", height = 8, width = 10)
+
+raw_p_Cognition_tax <- Metadec_ARGs_ok[1]
+corr_p_Cognition_tax <- Metadec_ARGs_ok[2]
+effect_size_Cognition_tax <- Metadec_ARGs_ok[3]
+status_Cognition_tax <- Metadec_ARGs_ok[4]
+
+saveRDS(Metadec_ARGs_ok, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/metadeconfoundR/Metadec_ARGs_ok.Rds")
+
+
+```
+
+
+
+```{r libraries and objects}
+library(phyloseq)
+library(metadeconfoundR)
+library(dplyr)
+library(microbiome)
+pacman::p_load(tidyverse, phyloseq, microbiome, knitr, lubridate, ggplotify, gtools, ggplot2, ggpubr, microViz, metadeconfoundR)
+
+
+#Batch effect corrrected and clr-transformed
+ps_clr_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ps_clr_corrected.Rds")
+GMMs_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/GMMs_corrected.Rds")
+
+```
+
+
+```{r Changing names ASVs}
+library(tidyr)
+library(tibble)
+library(purrr)
+require(phyloseq)
+require(tidyverse)
+require(magrittr)
+
+
+get_latest_annotation <- function(phyloseq_obj) {
+  tax_table <- phyloseq_obj@tax_table %>%
+    as.data.frame() %>%
+    rownames_to_column('ASV') %>%
+    as_tibble() %>%
+    tidyr::gather('Rank', 'Value', -ASV) %>%
+    nest(data = -ASV) %>%
+    mutate(TaxaID = map_chr(data, function(x) {
+      x %>%
+        dplyr::filter(!is.na(Value)) %>%
+        magrittr::use_series(Value) %>%
+        tail(1)
+    })) %>%
+    mutate(TaxaUp = map_chr(data, function(x) {
+      x %>%
+        dplyr::filter(!is.na(Value)) %>%
+        magrittr::use_series(Value) %>%
+        tail(2) %>% head(1)
+    })) %>%
+    mutate(TaxaID = paste(ASV, TaxaID)) %>%
+    dplyr::select(-c(data, TaxaUp))
+  
+  return(tax_table)
+}
+
+get_latest_annotation_noASV <- function(phyloseq_obj) {
+  tax_table <- phyloseq_obj@tax_table %>%
+    as.data.frame() %>%
+    rownames_to_column('ASV') %>%
+    as_tibble() %>%
+    tidyr::gather('Rank', 'Value', -ASV) %>%
+    nest(data = -ASV) %>%
+    mutate(TaxaID = map_chr(data, function(x) {
+      x %>%
+        dplyr::filter(!is.na(Value)) %>%
+        magrittr::use_series(Value) %>%
+        tail(1)
+    })) %>%
+    mutate(TaxaUp = map_chr(data, function(x) {
+      x %>%
+        dplyr::filter(!is.na(Value)) %>%
+        magrittr::use_series(Value) %>%
+        tail(2) %>% head(1)
+    })) %>%
+    mutate(TaxaID = paste(TaxaID)) %>%
+    dplyr::select(-c(data, TaxaUp))
+  
+  return(tax_table)
+}
+
+```
+
+

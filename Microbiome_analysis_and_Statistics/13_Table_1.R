@@ -1,5 +1,240 @@
 library(dplyr)
 library(phyloseq)
+library(purrr)
+library(tidyr)
+
+# -----------------------------
+# Load and prepare metadata
+# -----------------------------
+GMMs_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/GMMs_corrected.Rds")
+
+metadata <- data.frame(sample_data(GMMs_corrected))
+rownames(metadata) <- metadata$SampleID
+metadata$DmGenderSexID[metadata$DmGenderSexID == 2] <- 0
+
+vars <- c(
+  "Age", "PHES", "Ammonia", "IL6", "Haemoglobin", "Leukocytes",
+  "Lymphocytes", "Neutrophils", "Monocytes", "Absolute_Neutrophils",
+  "Eosinophils", "Absolute_Lymphocytes", "Absolute_Monocytes",
+  "Absolute_Eosinophils", "INR", "Fibrinogen", "Urea", "Creatinine",
+  "Total_bilirubin", "Albumin", "AST", "ALT", "GGT",
+  "Alkaline_phosphatase", "Sodium", "Potassium"
+)
+
+metadata_ok <- metadata %>%
+  select(Group_cutoff_4, Timepoint, all_of(vars))
+
+rm(GMMs_corrected)
+
+# -----------------------------
+# Helper functions
+# -----------------------------
+calc_stats <- function(x) {
+  c(
+    median = median(x, na.rm = TRUE),
+    Q1 = quantile(x, 0.25, na.rm = TRUE),
+    Q3 = quantile(x, 0.75, na.rm = TRUE)
+  )
+}
+
+p_to_star <- function(p) {
+  ifelse(p > 0.05, "",
+         ifelse(p <= 0.001, "***",
+                ifelse(p <= 0.01, "**", "*")))
+}
+
+wilcox_bh <- function(df, var, g1, g2) {
+  x <- df %>% filter(!!sym(g1)) %>% pull(!!sym(var))
+  y <- df %>% filter(!!sym(g2)) %>% pull(!!sym(var))
+  wilcox.test(x, y)$p.value
+}
+
+# -----------------------------
+# Create combined group
+# -----------------------------
+metadata_ok <- metadata_ok %>%
+  mutate(Group_TP = paste(Group_cutoff_4, Timepoint, sep = "_"))
+
+groups <- c("R_T0", "NR_T0", "R_T2", "NR_T2")
+
+# -----------------------------
+# Summary statistics table
+# -----------------------------
+stats_table <- metadata_ok %>%
+  filter(Group_TP %in% groups) %>%
+  group_by(Group_TP) %>%
+  summarise(
+    across(
+      all_of(vars),
+      list(
+        median = ~ median(.x, na.rm = TRUE),
+        Q1     = ~ quantile(.x, 0.25, na.rm = TRUE),
+        Q3     = ~ quantile(.x, 0.75, na.rm = TRUE)
+      ),
+      .names = "{.col}_{.fn}"
+    ),
+    .groups = "drop"
+  )
+
+
+formatted_table <- stats_table %>%
+  pivot_longer(
+    cols = -Group_TP,
+    names_to = c("Variable", "Stat"),
+    names_pattern = "^(.*)_(median|Q1|Q3)$",
+    values_to = "Value"
+  ) %>%
+  pivot_wider(
+    names_from = Stat,
+    values_from = Value
+  ) %>%
+  mutate(
+    Value_fmt = paste0(
+      round(as.numeric(median), 2), " (",
+      round(as.numeric(Q1), 2), ", ",
+      round(as.numeric(Q3), 2), ")"
+    )
+  ) %>%
+  select(Variable, Group_TP, Value_fmt) %>%
+  pivot_wider(
+    names_from  = Group_TP,
+    values_from = Value_fmt
+  )
+
+
+library(dplyr)
+library(tidyr)
+library(purrr)
+
+# Define your comparisons
+comparisons <- tibble(
+  g1 = c("R_T0","NR_T0","R_T0","R_T2"),
+  g2 = c("R_T2","NR_T2","NR_T0","NR_T2"),
+  comparison = c("R_T0 vs R_T2", "NR_T0 vs NR_T2", "R_T0 vs NR_T0", "R_T2 vs NR_T2")
+)
+
+library(dplyr)
+library(tidyr)
+library(purrr)
+
+# Define comparisons
+comparisons <- tibble(
+  g1 = c("R_T0","NR_T0","R_T0","R_T2"),
+  g2 = c("R_T2","NR_T2","NR_T0","NR_T2"),
+  comparison = c("R_T0 vs R_T2", "NR_T0 vs NR_T2", "R_T0 vs NR_T0", "R_T2 vs NR_T2")
+)
+
+# Compute p-values per variable, per comparison (adjusted BH per variable)
+pval_table <- expand_grid(
+  Variable = vars,
+  comparisons
+) %>%
+  rowwise() %>%
+  mutate(
+    p_value = wilcox.test(
+      metadata_ok %>% filter(Group_TP == g1) %>% pull(Variable),
+      metadata_ok %>% filter(Group_TP == g2) %>% pull(Variable)
+    )$p.value
+  ) %>%
+  ungroup() %>%
+  group_by(Variable) %>%
+  mutate(
+    adj_p_value = p.adjust(p_value, method = "BH"),
+    signif = p_to_star(adj_p_value)
+  ) %>%
+  select(Variable, g1, g2, comparison, signif)
+
+# Format stats table with median(Q1,Q3)
+formatted_table <- stats_table %>%
+  pivot_longer(
+    cols = -Group_TP,
+    names_to = c("Variable", "Stat"),
+    names_pattern = "^(.*)_(median|Q1|Q3)$",
+    values_to = "Value"
+  ) %>%
+  pivot_wider(
+    names_from = Stat,
+    values_from = Value
+  ) %>%
+  mutate(
+    Value_fmt = paste0(
+      round(as.numeric(median), 2), " (",
+      round(as.numeric(Q1), 2), ", ",
+      round(as.numeric(Q3), 2), ")"
+    )
+  ) %>%
+  select(Variable, Group_TP, Value_fmt) %>%
+  pivot_wider(
+    names_from  = Group_TP,
+    values_from = Value_fmt
+  )
+
+# Add significance stars to relevant columns
+# For each comparison, attach the star to the first group in the comparison
+for(i in 1:nrow(comparisons)){
+  g1 <- comparisons$g1[i]
+  comp_name <- comparisons$comparison[i]
+  
+  stars <- pval_table %>%
+    filter(comparison == comp_name) %>%
+    select(Variable, signif)
+  
+  formatted_table <- formatted_table %>%
+    left_join(stars, by = "Variable") %>%
+    mutate(
+      !!g1 := paste0(!!sym(g1), " ", signif)
+    ) %>%
+    select(-signif)
+}
+
+View(formatted_table)
+writexl::write_xlsx(formatted_table, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Tables/Table_1.xlsx")
+
+
+
+# Compute p-values per variable, per comparison
+pval_table <- expand_grid(
+  Variable = vars,
+  comparisons
+) %>%
+  rowwise() %>%
+  mutate(
+    p_value = wilcox.test(
+      metadata_ok %>% filter(Group_TP == g1) %>% pull(Variable),
+      metadata_ok %>% filter(Group_TP == g2) %>% pull(Variable)
+    )$p.value
+  ) %>%
+  ungroup() %>%
+  group_by(Variable) %>%                       # <-- adjust per variable
+  mutate(
+    adj_p_value = p.adjust(p_value, method = "BH"),
+    signif = p_to_star(adj_p_value),
+    p_fmt = paste0(round(adj_p_value, 3), signif)
+  ) %>%
+  select(Variable, comparison, p_fmt) %>%
+  pivot_wider(
+    names_from = comparison,
+    values_from = p_fmt
+  )
+writexl::write_xlsx(pval_table, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Tables/Pvals_Table_1.xlsx")
+
+
+
+
+
+
+
+
+
+
+
+################################################################################
+################################################################################
+################################# mini tables ##################################
+################################################################################
+
+library(dplyr)
+library(phyloseq)
 library(tidyr)
 library(purrr)
 GMMs_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/GMMs_corrected.Rds")
@@ -248,7 +483,7 @@ table_ok <- final_table_long %>%
 writexl::write_xlsx(table_ok, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Tables/Table_1_t2.xlsx")
 
 
-####################### Study ############################
+####################### mini Study ############################
 GMMs_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/GMMs_corrected.Rds")
 GMMs_corrected<- subset_samples(GMMs_corrected, Timepoint %in% c("T0"))
 metadata<-data.frame(sample_data(GMMs_corrected))
@@ -494,7 +729,7 @@ table_ok <- final_table_long %>%
   data.frame()
 writexl::write_xlsx(table_ok, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Tables/Table_Study_t2.xlsx")
 
-########################### Timepoint #################################
+########################### mini Timepoint #################################
 
 library(dplyr)
 library(phyloseq)

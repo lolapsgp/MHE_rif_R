@@ -277,7 +277,11 @@ adonis2(formula = t(otu_ARGs_ok2) ~ Group_cutoff_4 + Study + DmGenderSexID + Age
 # Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 ```
 
+```{r all together}
+ggarrange(p1,p2,p3, common.legend = TRUE, legend = "bottom", nrow = 1)
 
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/BetaDiv/Beta_Div_ARGs_ok.pdf", height = 5, width = 12)
+```
 
 ```````` 
 #ARGs rgi

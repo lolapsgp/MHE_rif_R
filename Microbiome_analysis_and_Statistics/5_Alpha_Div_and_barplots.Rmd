@@ -98,6 +98,126 @@ ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Fi
 
 
 ```{r comaprisons for significance}
+# to avoid multiple t-testing (lmer + anova)
+library(emmeans)
+library(lme4)
+model<-lmer(Shannon ~ Timepoint * Group_cutoff_4 * Study + (1 | Volunteer),data=Shannon)
+anova(model)
+#Type III Analysis of Variance Table with Satterthwaite's method
+#                                 Sum Sq  Mean Sq NumDF  DenDF F value Pr(>F)
+#Timepoint                      0.003908 0.003908     1 13.250  0.0290 0.8672
+#Group_cutoff_4                 0.017654 0.017654     1 14.017  0.1312 0.7226
+#Study                          0.202022 0.202022     1 14.017  1.5016 0.2406
+#Timepoint:Group_cutoff_4       0.101950 0.101950     1 13.250  0.7578 0.3995
+#Timepoint:Study                0.000773 0.000773     1 13.250  0.0057 0.9407
+#Group_cutoff_4:Study           0.003443 0.003443     1 14.017  0.0256 0.8752
+#Timepoint:Group_cutoff_4:Study 0.213743 0.213743     1 13.250  1.5887 0.2293
+
+
+
+#Fisher
+model<-lmer(Fisher ~ Timepoint * Group_cutoff_4 * Study + (1 | Volunteer),data=Fisher)
+anova(model)
+#Type III Analysis of Variance Table with Satterthwaite's method
+#                                Sum Sq Mean Sq NumDF  DenDF F value Pr(>F)  
+#Timepoint                      262.447 262.447     1 13.067  5.2498 0.0392 *
+#Group_cutoff_4                  13.253  13.253     1 13.989  0.2651 0.6147  
+#Study                            2.773   2.773     1 13.989  0.0555 0.8172  
+#Timepoint:Group_cutoff_4         4.191   4.191     1 13.067  0.0838 0.7767  
+#Timepoint:Study                  0.161   0.161     1 13.067  0.0032 0.9556  
+#Group_cutoff_4:Study             7.401   7.401     1 13.989  0.1480 0.7062  
+#Timepoint:Group_cutoff_4:Study   0.264   0.264     1 13.067  0.0053 0.9432  
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+emm <- emmeans(model, ~ Group_cutoff_4 | Timepoint )
+#NOTE: Results may be misleading due to involvement in interactions
+pairs(emm)
+#Timepoint = T0:
+# contrast estimate   SE   df t.ratio p.value
+# NR - R      -5.89 13.2 15.1  -0.446  0.6619
+
+#Timepoint = T2:
+# contrast estimate   SE   df t.ratio p.value
+# NR - R      -7.42 13.2 15.1  -0.563  0.5818
+
+#Results are averaged over the levels of: Study 
+#Degrees-of-freedom method: kenward-roger 
+ 
+emm <- emmeans(model, ~ Timepoint | Group_cutoff_4 )
+#NOTE: Results may be misleading due to involvement in interactions
+pairs(emm)
+#Group_cutoff_4 = NR:
+# contrast estimate   SE df t.ratio p.value
+# T0 - T2      6.84 3.38 13   2.022  0.0642
+
+#Group_cutoff_4 = R:
+# contrast estimate   SE df t.ratio p.value
+# T0 - T2      5.31 4.08 13   1.300  0.2162
+
+#Results are averaged over the levels of: Study 
+#Degrees-of-freedom method: kenward-roger  
+
+pairs(emm)
+# contrast estimate   SE df t.ratio p.value
+# T0 - T2      6.07 2.65 13   2.291  0.0393
+
+#Results are averaged over the levels of: Group_cutoff_4, Study 
+#Degrees-of-freedom method: kenward-roger 
+
+
+#Chao1
+model<-lmer(Chao1 ~ Timepoint * Group_cutoff_4 * Study + (1 | Volunteer),data=Chao1)
+anova(model)
+#Type III Analysis of Variance Table with Satterthwaite's method
+#                               Sum Sq Mean Sq NumDF  DenDF F value  Pr(>F)  
+#Timepoint                      7498.3  7498.3     1 13.088  4.6922 0.04934 *
+#Group_cutoff_4                  509.7   509.7     1 13.989  0.3189 0.58118  
+#Study                           522.9   522.9     1 13.989  0.3272 0.57639  
+#Timepoint:Group_cutoff_4          0.0     0.0     1 13.088  0.0000 0.99628  
+#Timepoint:Study                 542.3   542.3     1 13.088  0.3394 0.57009  
+#Group_cutoff_4:Study            444.1   444.1     1 13.989  0.2779 0.60632  
+#Timepoint:Group_cutoff_4:Study  215.4   215.4     1 13.088  0.1348 0.71939  
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+ 
+emm <- emmeans(model, ~ Group_cutoff_4 | Timepoint )
+#NOTE: Results may be misleading due to involvement in interactions
+pairs(emm)
+#Timepoint = T0:
+# contrast estimate   SE   df t.ratio p.value
+# NR - R      -36.5 66.5 15.4  -0.549  0.5910
+
+#Timepoint = T2:
+# contrast estimate   SE   df t.ratio p.value
+# NR - R      -36.7 66.5 15.4  -0.552  0.5891
+
+#Results are averaged over the levels of: Study 
+#Degrees-of-freedom method: kenward-roger 
+ 
+emm <- emmeans(model, ~ Timepoint | Group_cutoff_4 )
+#NOTE: Results may be misleading due to involvement in interactions
+pairs(emm)
+#Group_cutoff_4 = NR:
+# contrast estimate   SE df t.ratio p.value
+# T0 - T2      32.5 19.1 13   1.701  0.1127
+
+#Group_cutoff_4 = R:
+# contrast estimate   SE df t.ratio p.value
+# T0 - T2      32.4 23.1 13   1.403  0.1839
+
+#Results are averaged over the levels of: Study 
+#Degrees-of-freedom method: kenward-roger 
+
+emm <- emmeans(model, ~ Timepoint  )
+#NOTE: Results may be misleading due to involvement in interactions
+pairs(emm)
+# contrast estimate SE df t.ratio p.value
+# T0 - T2      32.5 15 13   2.166  0.0495
+
+#Results are averaged over the levels of: Group_cutoff_4, Study 
+#Degrees-of-freedom method: kenward-roger 
+
 # Perform t-tests for the specific pairs
 t1 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0"],
              Shannon$Shannon[Shannon$GroupTime == "NR_T2"])
@@ -284,6 +404,187 @@ ggplot(df_summary, aes(x = Group_cutoff_4, y = Abundance, fill = Phylum)) +
 ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Barplots_tax.pdf", height = 5, width = 4)
 ```
 
+###### Significant diff barplots
+```{r lmms}
+#change to clr
+
+library(phyloseq)
+library(compositions)
+
+ps_phylum <- tax_glom(ps_merged_filtered, taxrank = "Phylum")
+
+otu <- as.data.frame(t(otu_table(ps_phylum)))
+otu_clr <- clr(otu + 1)
+otu_table(ps_phylum) <- otu_table(t(otu_clr), taxa_are_rows = TRUE)
+
+df_lmm <- psmelt(ps_phylum)
+
+df_lmm <- df_lmm %>%
+  mutate(
+    Phylum = as.character(Phylum),
+    Timepoint = factor(Timepoint, levels = c("T0", "T2")),
+    Group_cutoff_4 = factor(Group_cutoff_4, levels = c("NR", "R"))
+  )
+
+# Run LMM for each phylum
+library(lme4)
+library(lmerTest)
+library(broom.mixed)
+
+lmm_results <- df_lmm %>%
+  group_by(Phylum) %>%
+  do(
+    tidy(
+      lmer(
+        Abundance ~ Group_cutoff_4 * Timepoint + (1 | Volunteer),
+        data = .
+      )
+    )
+  ) %>%
+  ungroup()
+
+interaction_results <- lmm_results %>%
+  filter(term == "Group_cutoff_4R:TimepointT2") %>%
+  mutate(p.adj = p.adjust(p.value, method = "BH"))
+
+#Significant differences indicate that R and NR change differently from T0 to T2
+
+# A tibble: 9 × 10
+#  Phylum      effect group term  estimate std.error statistic    df p.value  p.adj
+#  <chr>       <chr>  <chr> <chr>    <dbl>     <dbl>     <dbl> <dbl>   <dbl>  <dbl>
+#Actinobacteria fixed  NA    Grou…   -1.49      0.787    -1.89   13.1 0.0808  0.170
+#Bacteroidetes  fixed  NA    Grou…    2.20      1.21      1.82   11.4 0.0946  0.170
+#Elusimicrobia  fixed  NA    Grou…    1.38      0.925     1.50   31.0 0.144   0.186
+#Firmicutes   fixed  NA    Grou…   -1.02      0.351    -2.89   31.0 0.00690 0.0563
+#Ignavibacteriae fixed NA  Grou…   -0.750     0.388    -1.93   15.4 0.0717  0.170 
+#NA Bacteria phy fixed  NA   Grou…    0.203     0.382     0.532  15.5 0.602   0.602 #NA unknown    fixed  NA    Grou…   -0.819     0.287    -2.85   14.4 0.0125  0.0563
+#Proteobacteria fixed  NA    Grou…   -0.802     0.624    -1.29   15.0 0.218   0.245
+#Tenericutes   fixed  NA    Grou…    1.21      0.766     1.58   15.7 0.134   0.186
+
+#All groups T0 vs T2
+time_results <- lmm_results %>%
+  filter(term == "TimepointT2") %>%
+  mutate(p.adj = p.adjust(p.value, method = "BH"))
+#All Tiempoints R vs NR
+group_results <- lmm_results %>%
+  filter(term == "Group_cutoff_4R") %>%
+  mutate(p.adj = p.adjust(p.value, method = "BH"))
+#model diagnostics
+fit <- lmer(
+  Abundance ~ Group_cutoff_4 * Timepoint + (1 | Volunteer),
+  data = filter(df_lmm, Phylum == "Firmicutes")
+)
+
+plot(fit)
+qqnorm(residuals(fit))
+qqline(residuals(fit))
+
+
+#Helper function: LMM + emmeans for all phyla
+library(lme4)
+library(lmerTest)
+library(emmeans)
+library(dplyr)
+library(purrr)
+library(broom)
+
+run_emmeans_lmm <- function(
+  data,
+  response = "Abundance",
+  phylum_col = "Phylum",
+  subject_col = "Volunteer",
+  group_col = "Group_cutoff_4",
+  time_col = "Timepoint",
+  p_adjust = "BH"
+) {
+
+  # Ensure factors are ordered correctly
+  data <- data %>%
+    mutate(
+      !!group_col := factor(.data[[group_col]], levels = c("NR", "R")),
+      !!time_col  := factor(.data[[time_col]],  levels = c("T0", "T2"))
+    )
+
+  # Nest by phylum
+  nested <- data %>%
+    group_by(.data[[phylum_col]]) %>%
+    nest()
+
+  # Fit models + emmeans
+  results <- nested %>%
+    mutate(
+      model = map(
+        data,
+        ~ lmer(
+          as.formula(
+            paste(response, "~", group_col, "*", time_col, "+ (1 |", subject_col, ")")
+          ),
+          data = .
+        )
+      ),
+
+      # Within-group T0 vs T2
+      within_group = map(
+        model,
+        ~ emmeans(., pairwise ~ !!sym(time_col) | !!sym(group_col))$contrasts %>%
+          as.data.frame() %>%
+          mutate(contrast_type = "Within-group (T0 vs T2)")
+      ),
+
+      # Between-group R vs NR at each timepoint
+      between_group = map(
+        model,
+        ~ emmeans(., pairwise ~ !!sym(group_col) | !!sym(time_col))$contrasts %>%
+          as.data.frame() %>%
+          mutate(contrast_type = "Between-group (R vs NR)")
+      )
+    )
+
+  # Combine results
+  out <- results %>%
+    select(.data[[phylum_col]], within_group, between_group) %>%
+    pivot_longer(
+      cols = c(within_group, between_group),
+      names_to = "comparison",
+      values_to = "results"
+    ) %>%
+    unnest(results) %>%
+    group_by(contrast_type) %>%
+    mutate(p.adj = p.adjust(p.value, method = p_adjust)) %>%
+    ungroup()
+
+  return(out)
+}
+
+emmeans_results <- run_emmeans_lmm(df_lmm)
+
+#Firmicutes/Bacteroides ratio difefrences
+df_fb <- df_lmm %>%
+    filter(Phylum %in% c("Firmicutes", "Bacteroidetes")) %>%
+    select(Volunteer, Timepoint, Group_cutoff_4, Phylum, Abundance) %>%
+    pivot_wider(names_from = Phylum, values_from = Abundance) %>%
+    mutate(FB_ratio = Firmicutes - Bacteroidetes)
+
+fb_model <- lmer(FB_ratio ~ Group_cutoff_4 * Timepoint + (1 | Volunteer), data = df_fb)
+
+anova(fb_model)  # Type III ANOVA
+
+emmeans(fb_model, pairwise ~ Group_cutoff_4 | Timepoint) %>%
+    .$contrasts %>%
+    as.data.frame()%>%
+    mutate(p.adj = p.adjust(p.value, method = "BH"))
+
+emmeans(fb_model, pairwise ~ Timepoint | Group_cutoff_4) %>%
+    .$contrasts %>%
+    as.data.frame()%>%
+    mutate(p.adj = p.adjust(p.value, method = "BH"))
+# contrast Group_cutoff_4  estimate        SE       df   t.ratio   p.value     p.adj
+#T0 - T2             NR -1.323030 0.8526291 15.87433 -1.551706 0.1404391 0.1404391
+#T0 - T2              R  1.942295 1.1730271 15.19796  1.655797 0.1182598 0.1404391
+
+```
+
+
 #GMMs
 
 ```{r libraries and objects GMMs}
@@ -393,6 +694,68 @@ Shannon$Volunteer<-metadata$Volunteer
 Shannon$Study<-metadata$Study
 metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
 Shannon$GroupTime <-metadata$GroupTime 
+
+model<-lmer(Shannon ~ Timepoint * Group_cutoff_4 * Study + (1 | Volunteer),data=Shannon)
+anova(model)
+#Type III Analysis of Variance Table with Satterthwaite's method
+#                                  Sum Sq   Mean Sq NumDF  DenDF  F value    Pr(>F)    
+#Timepoint                      0.0000031 0.0000031     1 13.265   0.0255   0.87546    
+#Group_cutoff_4                 0.0164974 0.0164974     1 13.648 134.0642 1.934e-08 ***
+#Study                          0.0008418 0.0008418     1 13.648   6.8411   0.02069 *  
+#Timepoint:Group_cutoff_4       0.0000276 0.0000276     1 13.265   0.2242   0.64359    
+#Timepoint:Study                0.0002211 0.0002211     1 13.265   1.7969   0.20260    
+#Group_cutoff_4:Study           0.0000238 0.0000238     1 13.648   0.1938   0.66669    
+#Timepoint:Group_cutoff_4:Study 0.0001218 0.0001218     1 13.265   0.9899   0.33758    
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+
+emm <- emmeans(model, ~ Group_cutoff_4 | Timepoint )
+#NOTE: Results may be misleading due to involvement in interactions
+pairs(emm)
+#Timepoint = T0:
+# contrast estimate      SE   df t.ratio p.value
+# NR - R    -0.0735 0.00747 23.8  -9.842 <0.0001
+
+#Timepoint = T2:
+# contrast estimate      SE   df t.ratio p.value
+# NR - R    -0.0696 0.00743 23.7  -9.372 <0.0001
+
+#Results are averaged over the levels of: Study 
+#Degrees-of-freedom method: kenward-roger 
+
+emm <- emmeans(model, ~ Timepoint | Group_cutoff_4 )
+#NOTE: Results may be misleading due to involvement in interactions
+pairs(emm)
+#Group_cutoff_4 = NR:
+# contrast estimate      SE   df t.ratio p.value
+# T0 - T2  -0.00130 0.00529 13.3  -0.246  0.8094
+
+#Group_cutoff_4 = R:
+# contrast estimate      SE   df t.ratio p.value
+# T0 - T2   0.00263 0.00640 13.1   0.411  0.6881
+
+#Results are averaged over the levels of: Study 
+#Degrees-of-freedom method: kenward-roger 
+ 
+emm <- emmeans(model, ~ Timepoint  )
+#NOTE: Results may be misleading due to involvement in interactions
+pairs(emm)
+# contrast estimate      SE   df t.ratio p.value
+# T0 - T2  0.000663 0.00415 13.2   0.160  0.8756
+
+#Results are averaged over the levels of: Group_cutoff_4, Study 
+#Degrees-of-freedom method: kenward-roger 
+ 
+emm <- emmeans(model, ~ Group_cutoff_4  )
+#NOTE: Results may be misleading due to involvement in interactions
+pairs(emm)
+# contrast estimate      SE   df t.ratio p.value
+# NR - R    -0.0716 0.00618 13.6 -11.576 <0.0001
+
+#Results are averaged over the levels of: Timepoint, Study 
+#Degrees-of-freedom method: kenward-roger 
+
 # Perform t-tests for the specific pairs
 t1 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0"],
              Shannon$Shannon[Shannon$GroupTime == "NR_T2"])
@@ -678,6 +1041,68 @@ Shannon$Volunteer<-metadata$Volunteer
 Shannon$Study<-metadata$Study
 metadata$GroupTime <- paste(metadata$Group_cutoff_4, metadata$Timepoint, sep = "_")
 Shannon$GroupTime <-metadata$GroupTime 
+
+model<-lmer(Shannon ~ Timepoint * Group_cutoff_4 * Study + (1 | Volunteer),data=Shannon)
+#boundary (singular) fit: see help('isSingular')
+anova(model)
+#Type III Analysis of Variance Table with Satterthwaite's method
+#                               Sum Sq Mean Sq NumDF DenDF F value    Pr(>F)    
+#Timepoint                      0.4311  0.4311     1    15  1.1209 0.3064795    
+#Group_cutoff_4                 1.9061  1.9061     1    15  4.9563 0.0417459 *  
+#Study                          9.4773  9.4773     1    15 24.6429 0.0001698 ***
+#Timepoint:Group_cutoff_4       0.9793  0.9793     1    15  2.5464 0.1313924    
+#Timepoint:Study                0.5710  0.5710     1    15  1.4847 0.2418569    
+#Group_cutoff_4:Study           0.3183  0.3183     1    15  0.8277 0.3773123    
+#Timepoint:Group_cutoff_4:Study 0.5242  0.5242     1    15  1.3629 0.2612524    
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+emm <- emmeans(model, ~ Group_cutoff_4 | Timepoint )
+#NOTE: Results may be misleading due to involvement in interactions
+pairs(emm)
+#Timepoint = T0:
+# contrast estimate    SE df t.ratio p.value
+# NR - R     -1.170 0.449 15  -2.605  0.0199
+
+#Timepoint = T2:
+# contrast estimate    SE df t.ratio p.value
+# NR - R     -0.193 0.425 15  -0.454  0.6561
+
+#Results are averaged over the levels of: Study 
+#Degrees-of-freedom method: kenward-roger 
+ 
+emm <- emmeans(model, ~ Timepoint | Group_cutoff_4 )
+#NOTE: Results may be misleading due to involvement in interactions
+pairs(emm)
+#Group_cutoff_4 = NR:
+# contrast estimate    SE   df t.ratio p.value
+# T0 - T2    -0.164 0.355 8.36  -0.463  0.6549
+
+#Group_cutoff_4 = R:
+# contrast estimate    SE   df t.ratio p.value
+# T0 - T2     0.813 0.506 6.69   1.605  0.1545
+
+#Results are averaged over the levels of: Study 
+#Degrees-of-freedom method: kenward-roger 
+ 
+emm <- emmeans(model, ~ Timepoint  )
+#NOTE: Results may be misleading due to involvement in interactions
+pairs(emm)
+# contrast estimate    SE   df t.ratio p.value
+# T0 - T2     0.324 0.309 7.18   1.049  0.3284
+
+#Results are averaged over the levels of: Group_cutoff_4, Study 
+#Degrees-of-freedom method: kenward-roger 
+ 
+emm <- emmeans(model, ~ Group_cutoff_4  )
+#NOTE: Results may be misleading due to involvement in interactions
+pairs(emm)
+# contrast estimate    SE   df t.ratio p.value
+# NR - R     -0.682 0.309 7.18  -2.205  0.0623
+
+#Results are averaged over the levels of: Timepoint, Study 
+#Degrees-of-freedom method: kenward-roger
+
 # Perform t-tests for the specific pairs
 t1 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0"],
              Shannon$Shannon[Shannon$GroupTime == "NR_T2"])

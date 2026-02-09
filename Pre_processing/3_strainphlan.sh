@@ -39,9 +39,6 @@ strainphlan \
   -n 6 \
   --phylophlan_mode accurate \
   --mutation_rates \
-  --sample_with_n_markers 5 \
-  --marker_in_n_samples_perc 20 \
-  --sample_with_n_markers_perc 5 \
   --database /fast/AG_Forslund/shared/metaphlan_databases/mpa_vJun23_CHOCOPhlAnSGB_202307.pkl 
 
 echo "Done! Results are in $OUTPUT_DIR"

@@ -98,242 +98,56 @@ ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Fi
 
 
 ```{r comaprisons for significance}
-# to avoid multiple t-testing (lmer + anova)
-library(emmeans)
 library(lme4)
-model<-lmer(Shannon ~ Timepoint * Group_cutoff_4 * Study + (1 | Volunteer),data=Shannon)
-anova(model)
-#Type III Analysis of Variance Table with Satterthwaite's method
-#                                 Sum Sq  Mean Sq NumDF  DenDF F value Pr(>F)
-#Timepoint                      0.003908 0.003908     1 13.250  0.0290 0.8672
-#Group_cutoff_4                 0.017654 0.017654     1 14.017  0.1312 0.7226
-#Study                          0.202022 0.202022     1 14.017  1.5016 0.2406
-#Timepoint:Group_cutoff_4       0.101950 0.101950     1 13.250  0.7578 0.3995
-#Timepoint:Study                0.000773 0.000773     1 13.250  0.0057 0.9407
-#Group_cutoff_4:Study           0.003443 0.003443     1 14.017  0.0256 0.8752
-#Timepoint:Group_cutoff_4:Study 0.213743 0.213743     1 13.250  1.5887 0.2293
+library(lmerTest)   # for Type III ANOVA with Satterthwaite
+library(emmeans)
+library(openxlsx)
 
+# Create a new workbook
+wb <- createWorkbook()
 
+# List of datasets and their names
+datasets <- list(Shannon=Shannon, Fisher=Fisher, Chao1=Chao1)
+response_vars <- c("Shannon", "Fisher", "Chao1")
 
-#Fisher
-model<-lmer(Fisher ~ Timepoint * Group_cutoff_4 * Study + (1 | Volunteer),data=Fisher)
-anova(model)
-#Type III Analysis of Variance Table with Satterthwaite's method
-#                                Sum Sq Mean Sq NumDF  DenDF F value Pr(>F)  
-#Timepoint                      262.447 262.447     1 13.067  5.2498 0.0392 *
-#Group_cutoff_4                  13.253  13.253     1 13.989  0.2651 0.6147  
-#Study                            2.773   2.773     1 13.989  0.0555 0.8172  
-#Timepoint:Group_cutoff_4         4.191   4.191     1 13.067  0.0838 0.7767  
-#Timepoint:Study                  0.161   0.161     1 13.067  0.0032 0.9556  
-#Group_cutoff_4:Study             7.401   7.401     1 13.989  0.1480 0.7062  
-#Timepoint:Group_cutoff_4:Study   0.264   0.264     1 13.067  0.0053 0.9432  
-#---
-#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+for(i in seq_along(datasets)) {
+    data <- datasets[[i]]
+    response <- response_vars[i]
+    
+    # Fit model
+    model <- lmer(as.formula(paste(response, "~ Timepoint * Group_cutoff_4 * Study + (1 | Volunteer)")), 
+                  data = data)
+    
+    # ANOVA table
+    anova_tab <- as.data.frame(anova(model))
+    sheet_name_anova <- paste0(response, "_ANOVA")
+    addWorksheet(wb, sheet_name_anova)
+    writeData(wb, sheet_name_anova, anova_tab, rowNames = TRUE)
+    
+    # emmeans: Group_cutoff_4 | Timepoint
+    emm1 <- emmeans(model, ~ Group_cutoff_4 | Timepoint)
+    emm1_tab <- as.data.frame(pairs(emm1))
+    sheet_name_emm1 <- paste0(response, "_G_by_T")
+    addWorksheet(wb, sheet_name_emm1)
+    writeData(wb, sheet_name_emm1, emm1_tab)
+    
+    # emmeans: Timepoint | Group_cutoff_4
+    emm2 <- emmeans(model, ~ Timepoint | Group_cutoff_4)
+    emm2_tab <- as.data.frame(pairs(emm2))
+    sheet_name_emm2 <- paste0(response, "_T_by_G")
+    addWorksheet(wb, sheet_name_emm2)
+    writeData(wb, sheet_name_emm2, emm2_tab)
+    
+    # emmeans: Timepoint (main effect)
+    emm3 <- emmeans(model, ~ Timepoint)
+    emm3_tab <- as.data.frame(pairs(emm3))
+    sheet_name_emm3 <- paste0(response, "_T_main")
+    addWorksheet(wb, sheet_name_emm3)
+    writeData(wb, sheet_name_emm3, emm3_tab)
+}
 
-emm <- emmeans(model, ~ Group_cutoff_4 | Timepoint )
-#NOTE: Results may be misleading due to involvement in interactions
-pairs(emm)
-#Timepoint = T0:
-# contrast estimate   SE   df t.ratio p.value
-# NR - R      -5.89 13.2 15.1  -0.446  0.6619
-
-#Timepoint = T2:
-# contrast estimate   SE   df t.ratio p.value
-# NR - R      -7.42 13.2 15.1  -0.563  0.5818
-
-#Results are averaged over the levels of: Study 
-#Degrees-of-freedom method: kenward-roger 
- 
-emm <- emmeans(model, ~ Timepoint | Group_cutoff_4 )
-#NOTE: Results may be misleading due to involvement in interactions
-pairs(emm)
-#Group_cutoff_4 = NR:
-# contrast estimate   SE df t.ratio p.value
-# T0 - T2      6.84 3.38 13   2.022  0.0642
-
-#Group_cutoff_4 = R:
-# contrast estimate   SE df t.ratio p.value
-# T0 - T2      5.31 4.08 13   1.300  0.2162
-
-#Results are averaged over the levels of: Study 
-#Degrees-of-freedom method: kenward-roger  
-
-pairs(emm)
-# contrast estimate   SE df t.ratio p.value
-# T0 - T2      6.07 2.65 13   2.291  0.0393
-
-#Results are averaged over the levels of: Group_cutoff_4, Study 
-#Degrees-of-freedom method: kenward-roger 
-
-
-#Chao1
-model<-lmer(Chao1 ~ Timepoint * Group_cutoff_4 * Study + (1 | Volunteer),data=Chao1)
-anova(model)
-#Type III Analysis of Variance Table with Satterthwaite's method
-#                               Sum Sq Mean Sq NumDF  DenDF F value  Pr(>F)  
-#Timepoint                      7498.3  7498.3     1 13.088  4.6922 0.04934 *
-#Group_cutoff_4                  509.7   509.7     1 13.989  0.3189 0.58118  
-#Study                           522.9   522.9     1 13.989  0.3272 0.57639  
-#Timepoint:Group_cutoff_4          0.0     0.0     1 13.088  0.0000 0.99628  
-#Timepoint:Study                 542.3   542.3     1 13.088  0.3394 0.57009  
-#Group_cutoff_4:Study            444.1   444.1     1 13.989  0.2779 0.60632  
-#Timepoint:Group_cutoff_4:Study  215.4   215.4     1 13.088  0.1348 0.71939  
-#---
-#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
- 
-emm <- emmeans(model, ~ Group_cutoff_4 | Timepoint )
-#NOTE: Results may be misleading due to involvement in interactions
-pairs(emm)
-#Timepoint = T0:
-# contrast estimate   SE   df t.ratio p.value
-# NR - R      -36.5 66.5 15.4  -0.549  0.5910
-
-#Timepoint = T2:
-# contrast estimate   SE   df t.ratio p.value
-# NR - R      -36.7 66.5 15.4  -0.552  0.5891
-
-#Results are averaged over the levels of: Study 
-#Degrees-of-freedom method: kenward-roger 
- 
-emm <- emmeans(model, ~ Timepoint | Group_cutoff_4 )
-#NOTE: Results may be misleading due to involvement in interactions
-pairs(emm)
-#Group_cutoff_4 = NR:
-# contrast estimate   SE df t.ratio p.value
-# T0 - T2      32.5 19.1 13   1.701  0.1127
-
-#Group_cutoff_4 = R:
-# contrast estimate   SE df t.ratio p.value
-# T0 - T2      32.4 23.1 13   1.403  0.1839
-
-#Results are averaged over the levels of: Study 
-#Degrees-of-freedom method: kenward-roger 
-
-emm <- emmeans(model, ~ Timepoint  )
-#NOTE: Results may be misleading due to involvement in interactions
-pairs(emm)
-# contrast estimate SE df t.ratio p.value
-# T0 - T2      32.5 15 13   2.166  0.0495
-
-#Results are averaged over the levels of: Group_cutoff_4, Study 
-#Degrees-of-freedom method: kenward-roger 
-
-# Perform t-tests for the specific pairs
-t1 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0"],
-             Shannon$Shannon[Shannon$GroupTime == "NR_T2"])
-t2 <- t.test(Shannon$Shannon[Shannon$GroupTime == "R_T0"],
-             Shannon$Shannon[Shannon$GroupTime == "R_T2"])
-t3<-t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0" & Shannon$Study == "Spain"],
-       Shannon$Shannon[Shannon$GroupTime == "NR_T0" & Shannon$Study == "UK"])
-t4<-t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T2" & Shannon$Study == "Spain"],
-       Shannon$Shannon[Shannon$GroupTime == "NR_T2" & Shannon$Study == "UK"])
-t5<-t.test(Shannon$Shannon[Shannon$GroupTime == "R_T0" & Shannon$Study == "Spain"],
-       Shannon$Shannon[Shannon$GroupTime == "R_T0" & Shannon$Study == "UK"])
-t6<-t.test(Shannon$Shannon[Shannon$GroupTime == "R_T2" & Shannon$Study == "Spain"],
-       Shannon$Shannon[Shannon$GroupTime == "R_T2" & Shannon$Study == "UK"])
-t7 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0"],
-             Shannon$Shannon[Shannon$GroupTime == "R_T0"])
-t8 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T2"],
-             Shannon$Shannon[Shannon$GroupTime == "R_T2"])
-
-# Combine results into a data frame for p-value adjustment
-test_results_Sannon <- data.frame(
-    comparison = c("NR_T0 vs NR_T2", "R_T0 vs R_T2", "NR_T0 Spain vs NR_T0 UK", "NR_T2 Spain vs NR_T2 UK", "R_T0 Spain vs R_T0 UK", "R_T2 Spain vs R_T2 UK", "NR_T0 vs R_T0", "NR_T2 vs R_T2"),
-    p_value = c(t1$p.value, t2$p.value, t3$p.value, t4$p.value, t5$p.value, t6$p.value, t7$p.value, t8$p.value)
-)
-
-# Adjust p-values using BH method
-test_results_Sannon$p_adj <- p.adjust(test_results_Sannon$p_value, method = "BH")
-test_results_Sannon
-
-#> test_results_Shannon
-#               comparison   p_value     p_adj
-#1          NR_T0 vs NR_T2 0.6479653 0.8071154
-#2            R_T0 vs R_T2 0.7062260 0.8071154
-#3 NR_T0 Spain vs NR_T0 UK 0.3507639 0.7115112
-#4 NR_T2 Spain vs NR_T2 UK 0.6586883 0.8071154
-#5   R_T0 Spain vs R_T0 UK 0.3557556 0.7115112
-#6   R_T2 Spain vs R_T2 UK 0.3454075 0.7115112
-#7           NR_T0 vs R_T0 0.2652264 0.7115112
-#8           NR_T2 vs R_T2 0.8477300 0.8477300
-
-# Perform t-tests for the specific pairs
-t1 <- t.test(Fisher$Fisher[Fisher$GroupTime == "NR_T0"],
-             Fisher$Fisher[Fisher$GroupTime == "NR_T2"])
-t2 <- t.test(Fisher$Fisher[Fisher$GroupTime == "R_T0"],
-             Fisher$Fisher[Fisher$GroupTime == "R_T2"])
-t3<-t.test(Fisher$Fisher[Fisher$GroupTime == "NR_T0" & Fisher$Study == "Spain"],
-           Fisher$Fisher[Fisher$GroupTime == "NR_T0" & Fisher$Study == "UK"])
-t4<-t.test(Fisher$Fisher[Fisher$GroupTime == "NR_T2" & Fisher$Study == "Spain"],
-           Fisher$Fisher[Fisher$GroupTime == "NR_T2" & Fisher$Study == "UK"])
-t5<-t.test(Fisher$Fisher[Fisher$GroupTime == "R_T0" & Fisher$Study == "Spain"],
-           Fisher$Fisher[Fisher$GroupTime == "R_T0" & Fisher$Study == "UK"])
-t6<-t.test(Fisher$Fisher[Fisher$GroupTime == "R_T2" & Fisher$Study == "Spain"],
-           Fisher$Fisher[Fisher$GroupTime == "R_T2" & Fisher$Study == "UK"])
-t7 <- t.test(Fisher$Fisher[Fisher$GroupTime == "NR_T0"],
-             Fisher$Fisher[Fisher$GroupTime == "R_T0"])
-t8 <- t.test(Fisher$Fisher[Fisher$GroupTime == "NR_T2"],
-             Fisher$Fisher[Fisher$GroupTime == "R_T2"])
-
-# Combine results into a data frame for p-value adjustment
-test_results_Fisher <- data.frame(
-  comparison = c("NR_T0 vs NR_T2", "R_T0 vs R_T2", "NR_T0 Spain vs NR_T0 UK", "NR_T2 Spain vs NR_T2 UK", "R_T0 Spain vs R_T0 UK", "R_T2 Spain vs R_T2 UK", "NR_T0 vs R_T0", "NR_T2 vs R_T2"),
-  p_value = c(t1$p.value, t2$p.value, t3$p.value, t4$p.value, t5$p.value, t6$p.value, t7$p.value, t8$p.value)
-)
-
-# Adjust p-values using BH method
-test_results_Fisher$p_adj <- p.adjust(test_results$p_value, method = "BH")
-test_results_Fisher
-
-#> test_results_Fisher
-#               comparison   p_value     p_adj
-#1          NR_T0 vs NR_T2 0.4200665 0.8071154
-#2            R_T0 vs R_T2 0.7300266 0.8071154
-#3 NR_T0 Spain vs NR_T0 UK 0.8703186 0.7115112
-#4 NR_T2 Spain vs NR_T2 UK 0.9150340 0.8071154
-#5   R_T0 Spain vs R_T0 UK 0.7678223 0.7115112
-#6   R_T2 Spain vs R_T2 UK 0.7373593 0.7115112
-#7           NR_T0 vs R_T0 0.7459450 0.7115112
-#8           NR_T2 vs R_T2 0.5768418 0.8477300
-
-# Perform t-tests for the specific pairs
-t1 <- t.test(Chao1$Chao1[Chao1$GroupTime == "NR_T0"],
-             Chao1$Chao1[Chao1$GroupTime == "NR_T2"])
-t2 <- t.test(Chao1$Chao1[Chao1$GroupTime == "R_T0"],
-             Chao1$Chao1[Chao1$GroupTime == "R_T2"])
-t3<-t.test(Chao1$Chao1[Chao1$GroupTime == "NR_T0" & Chao1$Study == "Spain"],
-           Chao1$Chao1[Chao1$GroupTime == "NR_T0" & Chao1$Study == "UK"])
-t4<-t.test(Chao1$Chao1[Chao1$GroupTime == "NR_T2" & Chao1$Study == "Spain"],
-           Chao1$Chao1[Chao1$GroupTime == "NR_T2" & Chao1$Study == "UK"])
-t5<-t.test(Chao1$Chao1[Chao1$GroupTime == "R_T0" & Chao1$Study == "Spain"],
-           Chao1$Chao1[Chao1$GroupTime == "R_T0" & Chao1$Study == "UK"])
-t6<-t.test(Chao1$Chao1[Chao1$GroupTime == "R_T2" & Chao1$Study == "Spain"],
-           Chao1$Chao1[Chao1$GroupTime == "R_T2" & Chao1$Study == "UK"])
-t7 <- t.test(Chao1$Chao1[Chao1$GroupTime == "NR_T0"],
-             Chao1$Chao1[Chao1$GroupTime == "R_T0"])
-t8 <- t.test(Chao1$Chao1[Chao1$GroupTime == "NR_T2"],
-             Chao1$Chao1[Chao1$GroupTime == "R_T2"])
-
-# Combine results into a data frame for p-value adjustment
-test_results_Chao1 <- data.frame(
-  comparison = c("NR_T0 vs NR_T2", "R_T0 vs R_T2", "NR_T0 Spain vs NR_T0 UK", "NR_T2 Spain vs NR_T2 UK", "R_T0 Spain vs R_T0 UK", "R_T2 Spain vs R_T2 UK", "NR_T0 vs R_T0", "NR_T2 vs R_T2"),
-  p_value = c(t1$p.value, t2$p.value, t3$p.value, t4$p.value, t5$p.value, t6$p.value, t7$p.value, t8$p.value)
-)
-
-# Adjust p-values using BH method
-test_results_Chao1$p_adj <- p.adjust(test_results$p_value, method = "BH")
-test_results_Chao1
-
-#> test_results_Chao1
-#               comparison   p_value     p_adj
-#1          NR_T0 vs NR_T2 0.4444955 0.8071154
-#2            R_T0 vs R_T2 0.6991097 0.8071154
-#3 NR_T0 Spain vs NR_T0 UK 0.9941434 0.7115112
-#4 NR_T2 Spain vs NR_T2 UK 0.9975190 0.8071154
-#5   R_T0 Spain vs R_T0 UK 0.5659401 0.7115112
-#6   R_T2 Spain vs R_T2 UK 0.6513523 0.7115112
-#7           NR_T0 vs R_T0 0.6535484 0.7115112
-#8           NR_T2 vs R_T2 0.5656997 0.8477300
+# Save workbook
+saveWorkbook(wb, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Tables/ANOVA_EMM_results.xlsx", overwrite = TRUE)
 ```
 
 ###Barplots
@@ -581,6 +395,32 @@ emmeans(fb_model, pairwise ~ Timepoint | Group_cutoff_4) %>%
 # contrast Group_cutoff_4  estimate        SE       df   t.ratio   p.value     p.adj
 #T0 - T2             NR -1.323030 0.8526291 15.87433 -1.551706 0.1404391 0.1404391
 #T0 - T2              R  1.942295 1.1730271 15.19796  1.655797 0.1182598 0.1404391
+
+
+
+#Firmicutes/Bacteroides ratio difefrences
+df_fb <- df_lmm %>%
+    filter(Phylum %in% c("Firmicutes", "Bacteroidetes")) %>%
+    select(Volunteer, Timepoint, Group_cutoff_4, Phylum, Abundance) %>%
+    pivot_wider(names_from = Phylum, values_from = Abundance) %>%
+    mutate(FB_ratio = Firmicutes - Bacteroidetes)
+
+fb_model <- lmer(FB_ratio ~ Group_cutoff_4 * Timepoint + (1 | Volunteer), data = df_fb)
+
+anova(fb_model)  # Type III ANOVA
+
+emmeans(fb_model, pairwise ~ Group_cutoff_4 | Timepoint) %>%
+    .$contrasts %>%
+    as.data.frame()%>%
+    mutate(p.adj = p.adjust(p.value, method = "BH"))
+
+emmeans(fb_model, pairwise ~ Timepoint | Group_cutoff_4) %>%
+    .$contrasts %>%
+    as.data.frame()%>%
+    mutate(p.adj = p.adjust(p.value, method = "BH"))
+# contrast Group_cutoff_4  estimate        SE       df   t.ratio   p.value     p.adj
+#T0 - T2             NR -1.323030 0.8526291 15.87433 -1.551706 0.1404391 0.1404391
+#T0 - T2              R  1.942295 1.1730271 15.19796  1.655797 0.1182598 0
 
 ```
 
@@ -934,6 +774,19 @@ ggplot(df_summary, aes(x = Group_cutoff_4, y = RelativeAbundance, fill = Categor
 
 ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/AlphaDiv/Barplots_GMMs.pdf", height = 5, width = 5)
 ```
+
+###### Significant diff barplots GMM
+```{r GMMMs barplots}
+df_lmm <- df_long %>%
+  filter(Timepoint %in% c("T0", "T2"),
+         Group_cutoff_4 %in% c("R", "NR")) %>%
+  select(Volunteer, Timepoint, Group_cutoff_4, Category, Abundance) %>%
+  rename(Phylum = Category)  # so we can reuse the LMM code
+
+emmeans_results <- run_emmeans_lmm(df_lmm)
+
+```
+
 
 #ARGs ok
 ```{r libraries and objects ARGs}
@@ -1300,7 +1153,267 @@ ggplot(df_summary, aes(x = Group_cutoff_4, y = RelativeAbundance, fill = Class))
   ylim(0, 100)
 ```
 
+###### Significant diff barplots ARGs
+```{r ARGs significance}
+library(dplyr)
+
+df_lmm <- df_long %>%
+  filter(Timepoint %in% c("T0", "T2"),
+         Group_cutoff_4 %in% c("R", "NR")) %>%
+  select(Volunteer, Timepoint, Group_cutoff_4, Class, Abundance) %>%
+  rename(Phylum = Class)  # so we can reuse the previous run_emmeans_lmm function
+emmeans_results <- run_emmeans_lmm(df_lmm)
+
+
+```
+
+
+
+
 ```````` 
+not used but saved
+#significance taxa
+```{r taxa signif}
+# to avoid multiple t-testing (lmer + anova)
+library(emmeans)
+library(lme4)
+model<-lmer(Shannon ~ Timepoint * Group_cutoff_4 * Study + (1 | Volunteer),data=Shannon)
+anova(model)
+#Type III Analysis of Variance Table with Satterthwaite's method
+#                                 Sum Sq  Mean Sq NumDF  DenDF F value Pr(>F)
+#Timepoint                      0.003908 0.003908     1 13.250  0.0290 0.8672
+#Group_cutoff_4                 0.017654 0.017654     1 14.017  0.1312 0.7226
+#Study                          0.202022 0.202022     1 14.017  1.5016 0.2406
+#Timepoint:Group_cutoff_4       0.101950 0.101950     1 13.250  0.7578 0.3995
+#Timepoint:Study                0.000773 0.000773     1 13.250  0.0057 0.9407
+#Group_cutoff_4:Study           0.003443 0.003443     1 14.017  0.0256 0.8752
+#Timepoint:Group_cutoff_4:Study 0.213743 0.213743     1 13.250  1.5887 0.2293
+
+
+
+#Fisher
+model<-lmer(Fisher ~ Timepoint * Group_cutoff_4 * Study + (1 | Volunteer),data=Fisher)
+anova(model)
+#Type III Analysis of Variance Table with Satterthwaite's method
+#                                Sum Sq Mean Sq NumDF  DenDF F value Pr(>F)  
+#Timepoint                      262.447 262.447     1 13.067  5.2498 0.0392 *
+#Group_cutoff_4                  13.253  13.253     1 13.989  0.2651 0.6147  
+#Study                            2.773   2.773     1 13.989  0.0555 0.8172  
+#Timepoint:Group_cutoff_4         4.191   4.191     1 13.067  0.0838 0.7767  
+#Timepoint:Study                  0.161   0.161     1 13.067  0.0032 0.9556  
+#Group_cutoff_4:Study             7.401   7.401     1 13.989  0.1480 0.7062  
+#Timepoint:Group_cutoff_4:Study   0.264   0.264     1 13.067  0.0053 0.9432  
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+emm <- emmeans(model, ~ Group_cutoff_4 | Timepoint )
+#NOTE: Results may be misleading due to involvement in interactions
+pairs(emm)
+#Timepoint = T0:
+# contrast estimate   SE   df t.ratio p.value
+# NR - R      -5.89 13.2 15.1  -0.446  0.6619
+
+#Timepoint = T2:
+# contrast estimate   SE   df t.ratio p.value
+# NR - R      -7.42 13.2 15.1  -0.563  0.5818
+
+#Results are averaged over the levels of: Study 
+#Degrees-of-freedom method: kenward-roger 
+ 
+emm <- emmeans(model, ~ Timepoint | Group_cutoff_4 )
+#NOTE: Results may be misleading due to involvement in interactions
+pairs(emm)
+#Group_cutoff_4 = NR:
+# contrast estimate   SE df t.ratio p.value
+# T0 - T2      6.84 3.38 13   2.022  0.0642
+
+#Group_cutoff_4 = R:
+# contrast estimate   SE df t.ratio p.value
+# T0 - T2      5.31 4.08 13   1.300  0.2162
+
+#Results are averaged over the levels of: Study 
+#Degrees-of-freedom method: kenward-roger  
+
+pairs(emm)
+# contrast estimate   SE df t.ratio p.value
+# T0 - T2      6.07 2.65 13   2.291  0.0393
+
+#Results are averaged over the levels of: Group_cutoff_4, Study 
+#Degrees-of-freedom method: kenward-roger 
+
+
+#Chao1
+model<-lmer(Chao1 ~ Timepoint * Group_cutoff_4 * Study + (1 | Volunteer),data=Chao1)
+anova(model)
+#Type III Analysis of Variance Table with Satterthwaite's method
+#                               Sum Sq Mean Sq NumDF  DenDF F value  Pr(>F)  
+#Timepoint                      7498.3  7498.3     1 13.088  4.6922 0.04934 *
+#Group_cutoff_4                  509.7   509.7     1 13.989  0.3189 0.58118  
+#Study                           522.9   522.9     1 13.989  0.3272 0.57639  
+#Timepoint:Group_cutoff_4          0.0     0.0     1 13.088  0.0000 0.99628  
+#Timepoint:Study                 542.3   542.3     1 13.088  0.3394 0.57009  
+#Group_cutoff_4:Study            444.1   444.1     1 13.989  0.2779 0.60632  
+#Timepoint:Group_cutoff_4:Study  215.4   215.4     1 13.088  0.1348 0.71939  
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+ 
+emm <- emmeans(model, ~ Group_cutoff_4 | Timepoint )
+#NOTE: Results may be misleading due to involvement in interactions
+pairs(emm)
+#Timepoint = T0:
+# contrast estimate   SE   df t.ratio p.value
+# NR - R      -36.5 66.5 15.4  -0.549  0.5910
+
+#Timepoint = T2:
+# contrast estimate   SE   df t.ratio p.value
+# NR - R      -36.7 66.5 15.4  -0.552  0.5891
+
+#Results are averaged over the levels of: Study 
+#Degrees-of-freedom method: kenward-roger 
+ 
+emm <- emmeans(model, ~ Timepoint | Group_cutoff_4 )
+#NOTE: Results may be misleading due to involvement in interactions
+pairs(emm)
+#Group_cutoff_4 = NR:
+# contrast estimate   SE df t.ratio p.value
+# T0 - T2      32.5 19.1 13   1.701  0.1127
+
+#Group_cutoff_4 = R:
+# contrast estimate   SE df t.ratio p.value
+# T0 - T2      32.4 23.1 13   1.403  0.1839
+
+#Results are averaged over the levels of: Study 
+#Degrees-of-freedom method: kenward-roger 
+
+emm <- emmeans(model, ~ Timepoint  )
+#NOTE: Results may be misleading due to involvement in interactions
+pairs(emm)
+# contrast estimate SE df t.ratio p.value
+# T0 - T2      32.5 15 13   2.166  0.0495
+
+#Results are averaged over the levels of: Group_cutoff_4, Study 
+#Degrees-of-freedom method: kenward-roger 
+
+# Perform t-tests for the specific pairs
+t1 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0"],
+             Shannon$Shannon[Shannon$GroupTime == "NR_T2"])
+t2 <- t.test(Shannon$Shannon[Shannon$GroupTime == "R_T0"],
+             Shannon$Shannon[Shannon$GroupTime == "R_T2"])
+t3<-t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0" & Shannon$Study == "Spain"],
+       Shannon$Shannon[Shannon$GroupTime == "NR_T0" & Shannon$Study == "UK"])
+t4<-t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T2" & Shannon$Study == "Spain"],
+       Shannon$Shannon[Shannon$GroupTime == "NR_T2" & Shannon$Study == "UK"])
+t5<-t.test(Shannon$Shannon[Shannon$GroupTime == "R_T0" & Shannon$Study == "Spain"],
+       Shannon$Shannon[Shannon$GroupTime == "R_T0" & Shannon$Study == "UK"])
+t6<-t.test(Shannon$Shannon[Shannon$GroupTime == "R_T2" & Shannon$Study == "Spain"],
+       Shannon$Shannon[Shannon$GroupTime == "R_T2" & Shannon$Study == "UK"])
+t7 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T0"],
+             Shannon$Shannon[Shannon$GroupTime == "R_T0"])
+t8 <- t.test(Shannon$Shannon[Shannon$GroupTime == "NR_T2"],
+             Shannon$Shannon[Shannon$GroupTime == "R_T2"])
+
+# Combine results into a data frame for p-value adjustment
+test_results_Sannon <- data.frame(
+    comparison = c("NR_T0 vs NR_T2", "R_T0 vs R_T2", "NR_T0 Spain vs NR_T0 UK", "NR_T2 Spain vs NR_T2 UK", "R_T0 Spain vs R_T0 UK", "R_T2 Spain vs R_T2 UK", "NR_T0 vs R_T0", "NR_T2 vs R_T2"),
+    p_value = c(t1$p.value, t2$p.value, t3$p.value, t4$p.value, t5$p.value, t6$p.value, t7$p.value, t8$p.value)
+)
+
+# Adjust p-values using BH method
+test_results_Sannon$p_adj <- p.adjust(test_results_Sannon$p_value, method = "BH")
+test_results_Sannon
+
+#> test_results_Shannon
+#               comparison   p_value     p_adj
+#1          NR_T0 vs NR_T2 0.6479653 0.8071154
+#2            R_T0 vs R_T2 0.7062260 0.8071154
+#3 NR_T0 Spain vs NR_T0 UK 0.3507639 0.7115112
+#4 NR_T2 Spain vs NR_T2 UK 0.6586883 0.8071154
+#5   R_T0 Spain vs R_T0 UK 0.3557556 0.7115112
+#6   R_T2 Spain vs R_T2 UK 0.3454075 0.7115112
+#7           NR_T0 vs R_T0 0.2652264 0.7115112
+#8           NR_T2 vs R_T2 0.8477300 0.8477300
+
+# Perform t-tests for the specific pairs
+t1 <- t.test(Fisher$Fisher[Fisher$GroupTime == "NR_T0"],
+             Fisher$Fisher[Fisher$GroupTime == "NR_T2"])
+t2 <- t.test(Fisher$Fisher[Fisher$GroupTime == "R_T0"],
+             Fisher$Fisher[Fisher$GroupTime == "R_T2"])
+t3<-t.test(Fisher$Fisher[Fisher$GroupTime == "NR_T0" & Fisher$Study == "Spain"],
+           Fisher$Fisher[Fisher$GroupTime == "NR_T0" & Fisher$Study == "UK"])
+t4<-t.test(Fisher$Fisher[Fisher$GroupTime == "NR_T2" & Fisher$Study == "Spain"],
+           Fisher$Fisher[Fisher$GroupTime == "NR_T2" & Fisher$Study == "UK"])
+t5<-t.test(Fisher$Fisher[Fisher$GroupTime == "R_T0" & Fisher$Study == "Spain"],
+           Fisher$Fisher[Fisher$GroupTime == "R_T0" & Fisher$Study == "UK"])
+t6<-t.test(Fisher$Fisher[Fisher$GroupTime == "R_T2" & Fisher$Study == "Spain"],
+           Fisher$Fisher[Fisher$GroupTime == "R_T2" & Fisher$Study == "UK"])
+t7 <- t.test(Fisher$Fisher[Fisher$GroupTime == "NR_T0"],
+             Fisher$Fisher[Fisher$GroupTime == "R_T0"])
+t8 <- t.test(Fisher$Fisher[Fisher$GroupTime == "NR_T2"],
+             Fisher$Fisher[Fisher$GroupTime == "R_T2"])
+
+# Combine results into a data frame for p-value adjustment
+test_results_Fisher <- data.frame(
+  comparison = c("NR_T0 vs NR_T2", "R_T0 vs R_T2", "NR_T0 Spain vs NR_T0 UK", "NR_T2 Spain vs NR_T2 UK", "R_T0 Spain vs R_T0 UK", "R_T2 Spain vs R_T2 UK", "NR_T0 vs R_T0", "NR_T2 vs R_T2"),
+  p_value = c(t1$p.value, t2$p.value, t3$p.value, t4$p.value, t5$p.value, t6$p.value, t7$p.value, t8$p.value)
+)
+
+# Adjust p-values using BH method
+test_results_Fisher$p_adj <- p.adjust(test_results$p_value, method = "BH")
+test_results_Fisher
+
+#> test_results_Fisher
+#               comparison   p_value     p_adj
+#1          NR_T0 vs NR_T2 0.4200665 0.8071154
+#2            R_T0 vs R_T2 0.7300266 0.8071154
+#3 NR_T0 Spain vs NR_T0 UK 0.8703186 0.7115112
+#4 NR_T2 Spain vs NR_T2 UK 0.9150340 0.8071154
+#5   R_T0 Spain vs R_T0 UK 0.7678223 0.7115112
+#6   R_T2 Spain vs R_T2 UK 0.7373593 0.7115112
+#7           NR_T0 vs R_T0 0.7459450 0.7115112
+#8           NR_T2 vs R_T2 0.5768418 0.8477300
+
+# Perform t-tests for the specific pairs
+t1 <- t.test(Chao1$Chao1[Chao1$GroupTime == "NR_T0"],
+             Chao1$Chao1[Chao1$GroupTime == "NR_T2"])
+t2 <- t.test(Chao1$Chao1[Chao1$GroupTime == "R_T0"],
+             Chao1$Chao1[Chao1$GroupTime == "R_T2"])
+t3<-t.test(Chao1$Chao1[Chao1$GroupTime == "NR_T0" & Chao1$Study == "Spain"],
+           Chao1$Chao1[Chao1$GroupTime == "NR_T0" & Chao1$Study == "UK"])
+t4<-t.test(Chao1$Chao1[Chao1$GroupTime == "NR_T2" & Chao1$Study == "Spain"],
+           Chao1$Chao1[Chao1$GroupTime == "NR_T2" & Chao1$Study == "UK"])
+t5<-t.test(Chao1$Chao1[Chao1$GroupTime == "R_T0" & Chao1$Study == "Spain"],
+           Chao1$Chao1[Chao1$GroupTime == "R_T0" & Chao1$Study == "UK"])
+t6<-t.test(Chao1$Chao1[Chao1$GroupTime == "R_T2" & Chao1$Study == "Spain"],
+           Chao1$Chao1[Chao1$GroupTime == "R_T2" & Chao1$Study == "UK"])
+t7 <- t.test(Chao1$Chao1[Chao1$GroupTime == "NR_T0"],
+             Chao1$Chao1[Chao1$GroupTime == "R_T0"])
+t8 <- t.test(Chao1$Chao1[Chao1$GroupTime == "NR_T2"],
+             Chao1$Chao1[Chao1$GroupTime == "R_T2"])
+
+# Combine results into a data frame for p-value adjustment
+test_results_Chao1 <- data.frame(
+  comparison = c("NR_T0 vs NR_T2", "R_T0 vs R_T2", "NR_T0 Spain vs NR_T0 UK", "NR_T2 Spain vs NR_T2 UK", "R_T0 Spain vs R_T0 UK", "R_T2 Spain vs R_T2 UK", "NR_T0 vs R_T0", "NR_T2 vs R_T2"),
+  p_value = c(t1$p.value, t2$p.value, t3$p.value, t4$p.value, t5$p.value, t6$p.value, t7$p.value, t8$p.value)
+)
+
+# Adjust p-values using BH method
+test_results_Chao1$p_adj <- p.adjust(test_results$p_value, method = "BH")
+test_results_Chao1
+
+#> test_results_Chao1
+#               comparison   p_value     p_adj
+#1          NR_T0 vs NR_T2 0.4444955 0.8071154
+#2            R_T0 vs R_T2 0.6991097 0.8071154
+#3 NR_T0 Spain vs NR_T0 UK 0.9941434 0.7115112
+#4 NR_T2 Spain vs NR_T2 UK 0.9975190 0.8071154
+#5   R_T0 Spain vs R_T0 UK 0.5659401 0.7115112
+#6   R_T2 Spain vs R_T2 UK 0.6513523 0.7115112
+#7           NR_T0 vs R_T0 0.6535484 0.7115112
+#8           NR_T2 vs R_T2 0.5656997 0.8477300
+
+```
+
+
 #ARGs rgi
 ```{r libraries and objects ARGs}
 library("phyloseq"); packageVersion("phyloseq")

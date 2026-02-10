@@ -434,6 +434,104 @@ ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Fi
 
 ```
 
+#Taxa metaphlan 
+```{r boxplots taxa met}
+library(phyloseq)
+library(ggplot2)
+library(ggpubr)
+
+ps_clr_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ps_met_clr_corrected.Rds")
+ps_clr_corrected<- subset_samples(ps_clr_corrected, Timepoint %in% c("T0", "T2"))
+ps_clr_corrected<- subset_samples(ps_clr_corrected, Group_cutoff_4 %in% c("R", "NR"))
+taxa_ids <- c(
+    #Identified in both
+    "SGB1626", "SGB4874", "SGB4588", "SGB5792", "SGB1871", "SGB4936"
+    
+)
+
+
+# Prune taxa using their names (rownames of tax_table)
+physeq_sub <- prune_taxa(taxa_ids, ps_clr_corrected)
+
+# Melt phyloseq object to long-format dataframe
+df <- psmelt(physeq_sub)
+
+tax<-data.frame(tax_table(ps_clr_corrected))
+
+# Add profiled column by merging df and tax by matching OTU to rownames or appropriate id from tax:
+df_with_profiled <- merge(df, tax[, c("strain")], by.x = "OTU", by.y = "row.names", all.x = TRUE)
+
+
+# Create the histogram/bar plot
+ggplot(df_with_profiled, aes(x = strain, y = Abundance, fill = Group_cutoff_4)) +
+    geom_boxplot(position = position_dodge(), alpha = 0.3, outliers = FALSE) +
+    labs(x = "mOTU", y = "Clr- transformed abundance") +
+    theme_classic() +  
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+    geom_pwc(label = "{p.adj}{p.adj.signif}", hide.ns = TRUE, method = "wilcox_test", p.adjust.method = "BH")+
+    scale_fill_manual(values = c("NR" = "#CC79A7", "R" = "#009E73"), name = "Group cutoff 4") +
+    geom_jitter(aes(color = Study, , group = Group_cutoff_4), alpha =0.6,
+                position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8))+
+    scale_color_manual(values = c("Spain" = "#E69F00", "UK" = "#0072B2"), name = "Cohort") 
+
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/Histograms/Taxa_met_all.pdf", height = 8, width = 12)
+
+#Timepont 0
+ps_T0<- subset_samples(ps_clr_corrected, Timepoint %in% c("T0"))
+# Prune taxa using their names (rownames of tax_table)
+physeq_sub <- prune_taxa(taxa_ids, ps_T0)
+
+# Melt phyloseq object to long-format dataframe
+df <- psmelt(physeq_sub)
+
+tax<-data.frame(tax_table(ps_T0))
+
+# Add profiled column by merging df and tax by matching OTU to rownames or appropriate id from tax:
+df_with_profiled <- merge(df, tax[, c("strain")], by.x = "OTU", by.y = "row.names", all.x = TRUE)
+
+
+# Create the histogram/bar plot
+ggplot(df_with_profiled, aes(x = strain, y = Abundance, fill = Group_cutoff_4)) +
+    geom_boxplot(position = position_dodge(), alpha = 0.3, outliers = FALSE) +
+    labs(x = "mOTU", y = "Clr- transformed abundance") +
+    theme_classic() +  
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+    geom_pwc(label = "{p.adj}{p.adj.signif}", hide.ns = TRUE, method = "wilcox_test", p.adjust.method = "BH")+
+    scale_fill_manual(values = c("NR" = "#CC79A7", "R" = "#009E73"), name = "Group cutoff 4") +
+    geom_jitter(aes(color = Study, , group = Group_cutoff_4), alpha =0.6,
+                position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8))+
+    scale_color_manual(values = c("Spain" = "#E69F00", "UK" = "#0072B2"), name = "Cohort") 
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/Histograms/Taxa_met_T0.pdf", height = 8, width = 12)
+
+#Timepont 2
+ps_T2<- subset_samples(ps_clr_corrected, Timepoint %in% c("T2"))
+# Prune taxa using their names (rownames of tax_table)
+physeq_sub <- prune_taxa(taxa_ids, ps_T2)
+
+# Melt phyloseq object to long-format dataframe
+df <- psmelt(physeq_sub)
+
+tax<-data.frame(tax_table(ps_T2))
+
+# Add profiled column by merging df and tax by matching OTU to rownames or appropriate id from tax:
+df_with_profiled <- merge(df, tax[, c("strain")], by.x = "OTU", by.y = "row.names", all.x = TRUE)
+
+
+# Create the histogram/bar plot
+ggplot(df_with_profiled, aes(x = strain, y = Abundance, fill = Group_cutoff_4)) +
+    geom_boxplot(position = position_dodge(), alpha = 0.3, outliers = FALSE) +
+    labs(x = "mOTU", y = "Clr- transformed abundance") +
+    theme_classic() +  
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+    geom_pwc(label = "{p.adj}{p.adj.signif}", hide.ns = TRUE, method = "wilcox_test", p.adjust.method = "BH")+
+    scale_fill_manual(values = c("NR" = "#CC79A7", "R" = "#009E73"), name = "Group cutoff 4") +
+    geom_jitter(aes(color = Study, , group = Group_cutoff_4), alpha =0.6,
+                position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8))+
+    scale_color_manual(values = c("Spain" = "#E69F00", "UK" = "#0072B2"), name = "Cohort")  
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/Histograms/Taxa_met_T2.pdf", height = 8, width = 12)
+
+
+```
 
 
 ###Facet_wrap GMM as example 

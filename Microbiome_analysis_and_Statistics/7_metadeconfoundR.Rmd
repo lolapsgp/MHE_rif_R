@@ -1985,3 +1985,63 @@ get_latest_annotation_noASV <- function(phyloseq_obj) {
 ```
 
 
+# All together 
+```{r bind everything}
+library(dplyr)
+
+cols_to_keep <- c("TaxaID", "Comparison", "effectSize",
+                  "status", "corr_p", "Group")
+
+effect_table_sig_long_clean <-
+    effect_table_sig_long %>%
+    select(any_of(cols_to_keep))
+
+effect_table_sig_long_GMM_clean <-
+    effect_table_sig_long_GMM %>%
+    select(any_of(cols_to_keep))
+
+effect_table_sig_long_ARG_clean <-
+    effect_table_sig_long_ARG %>%
+    select(any_of(cols_to_keep))
+
+effect_table_sig_long_clean$Type <- "Taxa"
+effect_table_sig_long_GMM_clean$Type <- "GMM"
+effect_table_sig_long_ARG_clean$Type <- "ARG"
+
+combined_effects <- bind_rows(
+    effect_table_sig_long_clean,
+    effect_table_sig_long_GMM_clean,
+    effect_table_sig_long_ARG_clean
+)
+
+combined_effects %>%
+    ggplot(aes(x = Comparison, y = TaxaID)) +
+    geom_point(aes(fill = effectSize,
+                   shape = as.factor(sign(effectSize)),
+                   size = abs(effectSize),
+                   color = status)) +
+    geom_text(aes(label = stars.pval(corr_p),
+                  colour = status),
+              size = 5) +
+    scale_shape_manual(values = c(25, 24, 24)) +
+    scale_fill_gradient2(low = "blue", high = "red",
+                         mid = "white", midpoint = 0) +
+    scale_color_manual(values = c("gray22", "gray1"),
+                       labels = c("Confounded", "Deconfounded")) +
+    facet_grid(Type ~ ., scales = "free_y", space = "free_y", switch = "y") +
+    theme_classic() +
+    theme(
+        axis.text.x = element_text(angle = 90, hjust = 1),
+        strip.text = element_text(size = 14, face = "bold")
+    ) +
+    labs(
+        x = "Comparisons",
+        y = "Variables",
+        fill = "Effect size",
+        shape = "Confounding status"
+    )
+
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/MetadeconfoundR/combined.pdf", height = 4, width = 11)
+
+```
+

@@ -1,0 +1,323 @@
+---
+title: "Networks"
+author: "Lola"
+date: "2/11/2026"
+output: html_document
+---
+
+devtools::install_github("stefpeschel/NetCoMi", 
+                         dependencies = c("Depends", "Imports", "LinkingTo"),
+                         repos = c("https://cloud.r-project.org/",
+                                   BiocManager::repositories()))
+
+devtools::install_github("zdk123/SpiecEasi")
+devtools::install_github("GraceYoon/SPRING")
+
+At OTU level you cannot see much, there are too many interactions
+#Load packages
+```{r Load packages}
+library(NetCoMi)
+library(phyloseq)
+library(tidyr)
+library(dplyr)
+library(tibble)
+library(purrr)
+require(phyloseq)
+require(tidyverse)
+require(magrittr)
+
+
+get_latest_annotation <- function(phyloseq_obj) {
+        tax_table <- phyloseq_obj@tax_table %>%
+                as.data.frame() %>%
+                rownames_to_column('ASV') %>%
+                as_tibble() %>%
+                tidyr::gather('Rank', 'Value', -ASV) %>%
+                nest(data = -ASV) %>%
+                mutate(TaxaID = map_chr(data, function(x) {
+                        x %>%
+                                dplyr::filter(!is.na(Value)) %>%
+                                magrittr::use_series(Value) %>%
+                                tail(1)
+                })) %>%
+                mutate(TaxaUp = map_chr(data, function(x) {
+                        x %>%
+                                dplyr::filter(!is.na(Value)) %>%
+                                magrittr::use_series(Value) %>%
+                                tail(2) %>% head(1)
+                })) %>%
+                mutate(TaxaID = paste(ASV, TaxaID)) %>%
+                dplyr::select(-c(data, TaxaUp))
+        
+        return(tax_table)
+}
+
+```
+
+
+
+#SparCC GMM T0 Responder network
+```{r SparCC Responder by genus network}
+ps_genus_Responder <- subset_samples(GMMs_corrected, Group_cutoff_4 == "R")
+ps_genus_Responder <- subset_samples(ps_genus_Responder, Timepoint == "T0")
+otu<-data.frame((otu_table(ps_genus_Responder)))
+latest_annotations <- get_latest_annotation(ps_genus_Responder)
+latest_annotations<-as.data.frame(latest_annotations)
+rownames(otu)<-latest_annotations$TaxaID
+rownames(otu) <- gsub("^ASV\\d+\\s", "", rownames(otu))
+
+otu_ok <- t(otu) 
+
+data_input <- cbind(otu_ok)
+
+net_Responder <- netConstruct(data_input, 
+                              measure = "sparcc", 
+                              taxRank = "Genus",
+                              normMethod = "clr",
+                              nboot=40000,
+                              alpha = 0.000001,
+                              zeroMethod = "none",
+                              sparsMethod = "t-test",
+                              verbose = 3,
+                              dissFunc="unsigned",
+                              seed = 123456)
+
+props_Responder <- netAnalyze(net_Responder, clustMethod = "cluster_fast_greedy")
+plot(props_Responder, 
+     nodeColor = "cluster", 
+     nodeSize = "eigenvector",
+     repulsion = 0.8,
+     rmSingles = TRUE,
+     labelScale = FALSE,
+     cexLabels = 1.3,
+     nodeSizeSpread = 5,
+     cexNodes = 2,
+     hubBorderCol = "black",
+     posCol = "darkturquoise", 
+     negCol = "darkorange",
+     title1 = "Responder T0:
+     Genus level Network with SparCC correlations", 
+     showTitle = TRUE,
+     cexTitle = 1.3)
+
+```
+
+
+
+#SparCC T0 Responder genus network
+```{r SparCC Responder by genus network}
+ps_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ps_corrected.Rds")
+ps_genus <- tax_glom(ps_corrected, taxrank = "Genus")
+ps_genus_Responder <- subset_samples(ps_genus, Group_cutoff_4 == "R")
+ps_genus_Responder <- subset_samples(ps_genus_Responder, Timepoint == "T0")
+otu<-data.frame((otu_table(ps_genus_Responder)))
+latest_annotations <- get_latest_annotation(ps_genus_Responder)
+latest_annotations<-as.data.frame(latest_annotations)
+rownames(otu)<-latest_annotations$TaxaID
+rownames(otu) <- gsub("^ASV\\d+\\s", "", rownames(otu))
+
+otu_ok <- t(otu) 
+
+data_input <- cbind(otu_ok)
+
+net_Responder <- netConstruct(data_input, 
+                             measure = "sparcc", 
+                             taxRank = "Genus",
+                             normMethod = "clr",
+                             zeroMethod = "none",
+                             sparsMethod = "t-test",
+                             verbose = 3,
+                             dissFunc="unsigned",
+                             seed = 123456)
+
+props_Responder <- netAnalyze(net_Responder, clustMethod = "cluster_fast_greedy")
+# Save the plot and the legend to an .svg file
+svg("~/Lola/Rats_HE_HiperAmmon_model/outputs/Figures/Network_Responder_sparcc.svg", width = 10, height = 8)  # Specify the file name and dimensions
+par(mfrow = c(1, 1))  # Set the layout to a single plot
+plot<-plot(props_Responder, 
+           nodeColor = "cluster", 
+           nodeSize = "eigenvector",
+           repulsion = 0.8,
+           rmSingles = TRUE,
+           labelScale = FALSE,
+           cexLabels = 1.3,
+           nodeSizeSpread = 5,
+           cexNodes = 2,
+           hubBorderCol = "black",
+           posCol = "darkturquoise", 
+           negCol = "darkorange",
+           title1 = "Responder T0:
+     Genus level Network with SparCC correlations", 
+           showTitle = TRUE,
+           cexTitle = 1.3)
+
+
+legend(0.7, 1.0, cex = 0.80, title = "estimated correlation:",
+       legend = c("+","-"), lty = 1.5, lwd = 2.5, col = c("darkturquoise","darkorange"),
+       bty = "n", horiz = FALSE, x.intersp = 0.2, y.intersp = 0.5)
+dev.off()  # Close the .svg device
+#Save the plot to svg
+```
+
+#SparCC T2 Responder genus network
+```{r SparCC Responder by genus network}
+ps_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ps_corrected.Rds")
+ps_genus <- tax_glom(ps_corrected, taxrank = "Genus")
+ps_genus_Responder <- subset_samples(ps_genus, Group_cutoff_4 == "R")
+ps_genus_Responder <- subset_samples(ps_genus_Responder, Timepoint == "T2")
+otu<-data.frame((otu_table(ps_genus_Responder)))
+latest_annotations <- get_latest_annotation(ps_genus_Responder)
+latest_annotations<-as.data.frame(latest_annotations)
+rownames(otu)<-latest_annotations$TaxaID
+rownames(otu) <- gsub("^ASV\\d+\\s", "", rownames(otu))
+
+otu_ok <- t(otu) 
+
+data_input <- cbind(otu_ok)
+
+net_Responder <- netConstruct(data_input, 
+                             measure = "sparcc", 
+                             taxRank = "Genus",
+                             normMethod = "clr",
+                             zeroMethod = "none",
+                             sparsMethod = "t-test",
+                             verbose = 3,
+                             dissFunc="unsigned",
+                             seed = 123456)
+
+props_Responder <- netAnalyze(net_Responder, clustMethod = "cluster_fast_greedy")
+# Save the plot and the legend to an .svg file
+svg("~/Lola/Rats_HE_HiperAmmon_model/outputs/Figures/Network_Responder_sparcc.svg", width = 10, height = 8)  # Specify the file name and dimensions
+par(mfrow = c(1, 1))  # Set the layout to a single plot
+plot<-plot(props_Responder, 
+           nodeColor = "cluster", 
+           nodeSize = "eigenvector",
+           repulsion = 0.8,
+           rmSingles = TRUE,
+           labelScale = FALSE,
+           cexLabels = 1.3,
+           nodeSizeSpread = 5,
+           cexNodes = 2,
+           hubBorderCol = "black",
+           posCol = "darkturquoise", 
+           negCol = "darkorange",
+           title1 = "Responder T2:
+     Genus level Network with SparCC correlations", 
+           showTitle = TRUE,
+           cexTitle = 1.3)
+
+
+legend(0.7, 1.0, cex = 0.80, title = "estimated correlation:",
+       legend = c("+","-"), lty = 1.5, lwd = 2.5, col = c("darkturquoise","darkorange"),
+       bty = "n", horiz = FALSE, x.intersp = 0.2, y.intersp = 0.5)
+dev.off()  # Close the .svg device
+#Save the plot to svg
+```
+
+#SparCC T0 Non-Respondergenus network
+```{r SparCC NMCI by genus network}
+ps_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ps_corrected.Rds")
+ps_genus <- tax_glom(ps_corrected, taxrank = "Genus")
+ps_genus_NR_T0 <- subset_samples(ps_genus, Group_cutoff_4 == "NR")
+ps_genus_NR_T0 <- subset_samples(ps_genus_NR_T0, Timepoint == "T0")
+otu<-data.frame((otu_table(ps_genus_NR_T0)))
+latest_annotations <- get_latest_annotation(ps_genus_NR_T0)
+latest_annotations<-as.data.frame(latest_annotations)
+rownames(otu)<-latest_annotations$TaxaID
+rownames(otu) <- gsub("^ASV\\d+\\s", "", rownames(otu))
+otu_ok <- t(otu) 
+
+data_input <- cbind(otu_ok)
+
+net_NR_T0 <- netConstruct(data_input, 
+                             measure = "sparcc", 
+                             taxRank = "Genus",
+                             normMethod = "clr",
+                             zeroMethod = "none",
+                             sparsMethod = "t-test",
+                             verbose = 3,
+                             dissFunc="unsigned",
+                             seed = 123456)
+
+props_NR_T0 <- netAnalyze(net_NR_T0, clustMethod = "cluster_fast_greedy")
+# Save the plot and the legend to an .svg file
+svg("~/Lola/Rats_HE_HiperAmmon_model/outputs/Figures/Network_NR_T0_sparcc.svg", width = 10, height = 8)  # Specify the file name and dimensions
+par(mfrow = c(1, 1))  # Set the layout to a single plot
+plot<-plot(props_NR_T0, 
+           nodeColor = "cluster", 
+           nodeSize = "eigenvector",
+           repulsion = 0.8,
+           rmSingles = TRUE,
+           labelScale = FALSE,
+           cexLabels = 1.3,
+           nodeSizeSpread = 5,
+           cexNodes = 2,
+           hubBorderCol = "black",
+           posCol = "darkturquoise", 
+           negCol = "darkorange",
+           title1 = "NR T0:
+     Genus level Network with SparCC correlations", 
+           showTitle = TRUE,
+           cexTitle = 1.3)
+
+
+legend(0.7, 1.0, cex = 0.80, title = "estimated correlation:",
+       legend = c("+","-"), lty = 1.5, lwd = 2.5, col = c("darkturquoise","darkorange"),
+       bty = "n", horiz = FALSE, x.intersp = 0.2, y.intersp = 0.5)
+dev.off()  # Close the .svg device
+#Save the plot to svg
+```
+
+#SparCC T2 Non-Respondergenus network
+```{r SparCC NMCI by genus network}
+ps_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/ps_corrected.Rds")
+ps_genus <- tax_glom(ps_corrected, taxrank = "Genus")
+ps_genus_NR_T2 <- subset_samples(ps_genus, Group_cutoff_4 == "NR")
+ps_genus_NR_T2 <- subset_samples(ps_genus_NR_T2, Timepoint == "T2")
+otu<-data.frame((otu_table(ps_genus_NR_T2)))
+latest_annotations <- get_latest_annotation(ps_genus_NR_T2)
+latest_annotations<-as.data.frame(latest_annotations)
+rownames(otu)<-latest_annotations$TaxaID
+rownames(otu) <- gsub("^ASV\\d+\\s", "", rownames(otu))
+otu_ok <- t(otu) 
+
+data_input <- cbind(otu_ok)
+
+net_NR_T2 <- netConstruct(data_input, 
+                             measure = "sparcc", 
+                             taxRank = "Genus",
+                             normMethod = "clr",
+                             zeroMethod = "none",
+                             sparsMethod = "t-test",
+                             verbose = 3,
+                             dissFunc="unsigned",
+                             seed = 123456)
+
+props_NR_T2 <- netAnalyze(net_NR_T2, clustMethod = "cluster_fast_greedy")
+# Save the plot and the legend to an .svg file
+svg("~/Lola/Rats_HE_HiperAmmon_model/outputs/Figures/Network_NR_T2_sparcc.svg", width = 10, height = 8)  # Specify the file name and dimensions
+par(mfrow = c(1, 1))  # Set the layout to a single plot
+plot<-plot(props_NR_T2, 
+           nodeColor = "cluster", 
+           nodeSize = "eigenvector",
+           repulsion = 0.8,
+           rmSingles = TRUE,
+           labelScale = FALSE,
+           cexLabels = 1.3,
+           nodeSizeSpread = 5,
+           cexNodes = 2,
+           hubBorderCol = "black",
+           posCol = "darkturquoise", 
+           negCol = "darkorange",
+           title1 = "NR T2:
+     Genus level Network with SparCC correlations", 
+           showTitle = TRUE,
+           cexTitle = 1.3)
+
+
+legend(0.7, 1.0, cex = 0.80, title = "estimated correlation:",
+       legend = c("+","-"), lty = 1.5, lwd = 2.5, col = c("darkturquoise","darkorange"),
+       bty = "n", horiz = FALSE, x.intersp = 0.2, y.intersp = 0.5)
+dev.off()  # Close the .svg device
+#Save the plot to svg
+```

@@ -1,5 +1,5 @@
 library(readxl)
-rpoB_nuevos <- read_excel("Documents/Doctorado/Estudios/INCLIVA_2024/rpoB/rpoB_nuevos.xlsx", 
+rpoB_nuevos <- read_excel("/rpoB/rpoB_nuevos.xlsx", 
                           sheet = "all")
 View(rpoB_nuevos)
 

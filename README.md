@@ -28,13 +28,13 @@ MHE_rif_R/
 
 This module includes:
 
-· Quality control of raw sequencing reads.:
+· Quality control of raw sequencing reads.
 
 · Functional and taxonomic annotation using NGLess.
 
 · MetaPhlAn profiling.
 
-· StrainPhlAn marker extraction and phylogenetic analyses.:
+· StrainPhlAn marker extraction and phylogenetic analyses.
 
 · Environment configuration files.
 
@@ -49,11 +49,17 @@ SLURM environment (recommended)
 This workflow identifies and quantifies antibiotic resistance genes from shotgun metagenomic assemblies and mappings.
 
 · Assembly using MEGAHIT
+
 · ARG annotation using:
+
     · ResFinder
+
     · RGI / CARD
+
 · Read mapping to ARG-containing contigs
+
 · ARG abundance normalization
+
 
 
 #### 3. MAG Reconstruction and Annotation
@@ -61,12 +67,19 @@ This workflow identifies and quantifies antibiotic resistance genes from shotgun
 This module reconstructs and characterizes metagenome-assembled genomes (MAGs).
 
 · Contig binning
+
 · MAG quality control
+
 · Taxonomic classification
+
 · Functional annotation
+
 · Dereplication
+
 · Phylogenomics
+
 · KEGG/GMM functional analyses
+
 · Pan-genome analyses
 
 
@@ -75,14 +88,23 @@ This module reconstructs and characterizes metagenome-assembled genomes (MAGs).
 This section contains statistical analyses and figure-generation scripts.
 
 · Phyloseq object construction
+
 · Alpha diversity
+
 · Beta diversity
+
 · Differential abundance testing
+
 · Batch correction
+
 · Network analyses
+
 · Circos plots
+
 · Sankey diagrams
+
 · MaAsLin2 modeling
+
 · Longitudinal before/after treatment comparisons
 
 

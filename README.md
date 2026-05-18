@@ -28,13 +28,13 @@ MHE_rif_R/
 
 This module includes:
 
-· Quality control of raw sequencing reads.
+· Quality control of raw sequencing reads.:
 
 · Functional and taxonomic annotation using NGLess.
 
 · MetaPhlAn profiling.
 
-· StrainPhlAn marker extraction and phylogenetic analyses.
+· StrainPhlAn marker extraction and phylogenetic analyses.:
 
 · Environment configuration files.
 

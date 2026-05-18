@@ -1535,7 +1535,7 @@ effect_table_sig <- effect_table%>%
 
 #pivot long format
 
-effect_table_sig_long <- effect_table_sig%>%
+effect_table_sig_long_ARG <- effect_table_sig%>%
   pivot_longer(cols = starts_with("status"), names_to = "comparison_status", values_to = "status")%>%
   separate(comparison_status, c("variable" ,"Group", "Comparison"), "_")%>%
   mutate(comparison_status=paste(Group,Comparison, sep="_"))%>%
@@ -1565,7 +1565,7 @@ effect_table_sig_long <- effect_table_sig%>%
 ```{r one for tax and other for GMM}
 #Too long names, delete "Drug Class" from first function 
 #plot
-effect_table_sig_long %>%
+effect_table_sig_long_ARG %>%
   ggplot(aes(x = Comparison, y = TaxaID)) +
   geom_point(aes(fill = effectSize, shape = as.factor(sign(effectSize)), 
                  size = abs(effectSize), color = status)) +
@@ -1668,7 +1668,7 @@ effect_table_sig <- effect_table%>%
 
 #pivot long format
 
-effect_table_sig_long <- effect_table_sig%>%
+effect_table_sig_long_ARG <- effect_table_sig%>%
   pivot_longer(cols = starts_with("status"), names_to = "comparison_status", values_to = "status")%>%
   separate(comparison_status, c("variable" ,"Group", "Comparison"), "_")%>%
   mutate(comparison_status=paste(Group,Comparison, sep="_"))%>%
@@ -2041,7 +2041,7 @@ combined_effects %>%
         shape = "Confounding status"
     )
 
-ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/MetadeconfoundR/combined.pdf", height = 4, width = 11)
+ggsave("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Figures_merged/MetadeconfoundR/combined.pdf", height = 11, width = 11)
 
 ```
 

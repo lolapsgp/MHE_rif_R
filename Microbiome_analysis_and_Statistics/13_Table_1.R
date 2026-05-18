@@ -191,6 +191,137 @@ View(formatted_table)
 writexl::write_xlsx(formatted_table, "/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/Tables/Table_1.xlsx")
 
 
+#PAIRED p-values 
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(lme4)
+library(emmeans)
+library(writexl)
+
+# -----------------------------
+# Load metadata
+# -----------------------------
+GMMs_corrected <- readRDS("/fast/AG_Forslund/Lola/Secuencias_INCLIVA_2024/MHE_rif/outputs/merged/GMMs_corrected.Rds")
+
+metadata <- data.frame(sample_data(GMMs_corrected))
+rownames(metadata) <- metadata$SampleID
+metadata$DmGenderSexID[metadata$DmGenderSexID == 2] <- 0
+
+vars <- c(
+  "Age","PHES","Ammonia","IL6","Haemoglobin","Leukocytes",
+  "Lymphocytes","Neutrophils","Monocytes","Absolute_Neutrophils",
+  "Eosinophils","Absolute_Lymphocytes","Absolute_Monocytes",
+  "Absolute_Eosinophils","INR","Fibrinogen","Urea","Creatinine",
+  "Total_bilirubin","Albumin","AST","ALT","GGT",
+  "Alkaline_phosphatase","Sodium","Potassium", "Volunteer"
+)
+
+metadata_ok <- metadata %>%
+  select(Volunteer, Group_cutoff_4, Timepoint, all_of(vars)) %>%
+  mutate(
+    Volunteer = factor(Volunteer),
+    Group_cutoff_4 = factor(Group_cutoff_4),
+    Timepoint = factor(Timepoint)
+  )
+vars <- setdiff(vars, "Volunteer")
+# Long format (now safe)
+metadata_long <- metadata_ok %>%
+  pivot_longer(cols = all_of(vars),
+               names_to = "Variable",
+               values_to = "value") %>%
+  group_by(Volunteer, Group_cutoff_4, Timepoint, Variable) %>%
+  summarise(value = mean(value, na.rm = TRUE), .groups = "drop")
+
+rm(GMMs_corrected)
+
+# -----------------------------
+# Create combined group
+# -----------------------------
+metadata_ok <- metadata_ok %>%
+  mutate(Group_TP = paste(Group_cutoff_4, Timepoint, sep = "_"))
+
+groups <- c("R_T0","NR_T0","R_T2","NR_T2")
+
+# -----------------------------
+# Summary statistics (safe version)
+# -----------------------------
+
+get_pvals <- function(df_var) {
+  
+  var_name <- unique(df_var$Variable)
+  
+  # ----- Within R (paired) -----
+  r_wide <- df_var %>%
+    filter(Group_cutoff_4 == "R") %>%
+    select(Volunteer, Timepoint, value) %>%
+    pivot_wider(names_from = Timepoint, values_from = value) %>%
+    drop_na(T0, T2)
+  
+  p_r <- if(nrow(r_wide) > 1) {
+    wilcox.test(r_wide$T0, r_wide$T2, paired = TRUE)$p.value
+  } else { NA }
+  
+  # ----- Within NR (paired) -----
+  nr_wide <- df_var %>%
+    filter(Group_cutoff_4 == "NR") %>%
+    select(Volunteer, Timepoint, value) %>%
+    pivot_wider(names_from = Timepoint, values_from = value) %>%
+    drop_na(T0, T2)
+  
+  p_nr <- if(nrow(nr_wide) > 1) {
+    wilcox.test(nr_wide$T0, nr_wide$T2, paired = TRUE)$p.value
+  } else { NA }
+  
+  # ----- Between groups T0 -----
+  t0 <- df_var %>% filter(Timepoint == "T0")
+  p_t0 <- if(length(unique(t0$Group_cutoff_4)) == 2) {
+    wilcox.test(value ~ Group_cutoff_4, data = t0)$p.value
+  } else { NA }
+  
+  # ----- Between groups T2 -----
+  t2 <- df_var %>% filter(Timepoint == "T2")
+  p_t2 <- if(length(unique(t2$Group_cutoff_4)) == 2) {
+    wilcox.test(value ~ Group_cutoff_4, data = t2)$p.value
+  } else { NA }
+  
+  tibble(
+    Variable = var_name,
+    `R_T0 vs R_T2` = p_r,
+    `NR_T0 vs NR_T2` = p_nr,
+    `R_T0 vs NR_T0` = p_t0,
+    `R_T2 vs NR_T2` = p_t2
+  )
+}
+
+# -----------------------------
+# WILCOXON PAIRED COMPARISONS
+# -----------------------------
+pval_table <- metadata_long %>%
+  group_split(Variable) %>%
+  map_dfr(get_pvals)
+
+pval_table_adj <- pval_table %>%
+  pivot_longer(-Variable,
+               names_to = "comparison",
+               values_to = "p") %>%
+  group_by(Variable) %>%
+  mutate(
+    adj_p = p.adjust(p, method = "BH"),
+    stars = case_when(
+      adj_p <= 0.001 ~ "***",
+      adj_p <= 0.01  ~ "**",
+      adj_p <= 0.05  ~ "*",
+      TRUE ~ ""
+    ),
+    p_formatted = ifelse(is.na(adj_p), NA,
+                         paste0(round(adj_p,3), stars))
+  ) %>%
+  ungroup() %>%
+  select(Variable, comparison, p_formatted) %>%
+  pivot_wider(names_from = comparison,
+              values_from = p_formatted)
+
 
 # Compute p-values per variable, per comparison
 pval_table <- expand_grid(
